@@ -1,0 +1,497 @@
+html.mobile-game #app-layout {
+  position: fixed;
+  inset: 0;
+  display: block;
+  padding: 0;
+  margin: 0;
+}
+html.mobile-game #stage {
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html.mobile-game #screen-frame {
+  margin: 0;
+  border: 0;
+  box-shadow: none;
+}
+html.mobile-game #vm-controls,
+html.mobile-game .agent-connection,
+html.mobile-game .agent-commands,
+html.mobile-game #vm-touch-controls,
+html.mobile-game #vm-touch-joystick {
+  display: none !important;
+}
+html.mobile-game button {
+  touch-action: none;
+}
+.mobile-menu,
+.mobile-cancel,
+.mobile-actions,
+.mobile-groups {
+  position: fixed;
+  z-index: 70;
+}
+.mobile-menu,
+.mobile-cancel,
+.mobile-actions button,
+.mobile-groups button,
+.mobile-panel button {
+  color: #e4e8dd;
+  background: #172329db;
+  border: 1px solid #71827a;
+  border-radius: 8px;
+  font: 14px system-ui;
+  min-height: 40px;
+  padding: 7px 12px;
+}
+.mobile-menu {
+  top: max(4px, env(safe-area-inset-top));
+  left: max(4px, env(safe-area-inset-left));
+  width: 42px;
+  opacity: 0.75;
+}
+.mobile-sidebar-expand,
+.mobile-sidebar-tools {
+  position: fixed;
+  z-index: 72;
+  right: 0;
+  top: 0;
+}
+.mobile-sidebar-expand {
+  right: calc(28vh + 4px);
+  color: #e9e6d7;
+  background: #172329e8;
+  border: 1px solid #71827a;
+  border-radius: 8px;
+  min-height: 42px;
+  padding: 6px 10px;
+}
+.mobile-sidebar-tools {
+  display: flex;
+  width: min(224px, 32vw);
+  height: 44px;
+  background: #101a20;
+}
+.mobile-sidebar-tools button {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #71827a;
+  color: #ecebdc;
+  background: #172329;
+  font: 14px system-ui;
+}
+.mobile-cancel {
+  top: 4px;
+  left: 54px;
+}
+.mobile-actions {
+  bottom: max(5px, env(safe-area-inset-bottom));
+  left: max(5px, env(safe-area-inset-left));
+  display: flex;
+  gap: 5px;
+}
+.mobile-groups {
+  left: 6px;
+  bottom: 54px;
+  background: #172329ed;
+  padding: 10px;
+  border-radius: 8px;
+}
+.mobile-groups span {
+  display: block;
+  color: #ddd;
+  font: 12px system-ui;
+  margin-bottom: 8px;
+}
+.mobile-groups button {
+  margin-right: 6px;
+  width: 45px;
+}
+.mobile-groups [data-assigned="true"] {
+  border-color: #c6e895;
+}
+
+html.mobile-game #stage {
+  overflow: hidden;
+}
+html.mobile-game #screen-frame {
+  flex: none;
+}
+.mobile-panel-shade {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+}
+.mobile-panel {
+  position: absolute;
+  inset: max(8px, env(safe-area-inset-top)) auto max(8px, env(safe-area-inset-bottom))
+    max(8px, env(safe-area-inset-left));
+  width: min(420px, calc(100vw - max(180px, 22vw)));
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  background: #101a20fa;
+  border: 1px solid #59696b;
+  border-radius: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+  color: #e3e7db;
+  font: 14px / 1.5 system-ui;
+}
+.mobile-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+}
+.mobile-panel header span,
+.mobile-muted {
+  color: #a9b9b3;
+  font-size: 12px;
+}
+.mobile-panel-tabs {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 10px;
+}
+.mobile-panel-tabs button {
+  flex: 1;
+}
+.mobile-panel [aria-pressed="true"] {
+  background: #6b352b;
+  border-color: #dfa980;
+}
+.mobile-panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.mobile-panel footer {
+  flex: none;
+  padding-top: 8px;
+  border-top: 1px solid #394d4b;
+}
+.mobile-panel .mobile-return {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  background: #76523b;
+  border-color: #c6a47d;
+  font-size: 17px;
+  font-weight: 700;
+}
+.mobile-message {
+  color: #e8cc89;
+  font-size: 12px;
+  margin: 0 0 5px;
+  max-height: 36px;
+  overflow: auto;
+}
+.mobile-message:empty {
+  display: none;
+}
+.mobile-command-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 8px 0;
+}
+.mobile-panel .mobile-menu-wide {
+  width: 100%;
+  min-height: 44px;
+}
+.mobile-panel fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.mobile-panel details {
+  margin: 12px 0;
+  border-top: 1px solid #344846;
+  padding-top: 9px;
+}
+.mobile-panel summary {
+  cursor: pointer;
+  min-height: 32px;
+  color: #c3d2c6;
+}
+.mobile-money-row {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mobile-money-row label {
+  flex: 1;
+}
+.mobile-money-row input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  background: #263831;
+  color: white;
+  border: 1px solid #809184;
+  padding: 8px;
+}
+.mobile-cheat-card {
+  display: block;
+  background: #20312e;
+  border: 1px solid #4a6256;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 9px 0;
+}
+.mobile-cheat-card small {
+  display: block;
+  color: #afc0b4;
+  font-size: 11px;
+  margin-top: 3px;
+}
+.mobile-speed-options {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mobile-speed-options button {
+  flex: 1;
+  padding: 6px;
+}
+.mobile-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.mobile-toggle input {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  accent-color: #d8ad74;
+}
+.mobile-volume {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin: 6px 0 16px;
+}
+.mobile-volume input {
+  flex: 1;
+}
+.mobile-import {
+  display: block;
+  margin: 14px 0;
+}
+.mobile-import input {
+  width: 100%;
+  margin-top: 6px;
+}
+.mobile-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 85;
+  background: #171a1b url("/images/mobile-loading-background.png") center / cover no-repeat;
+  color: #f3e6cd;
+}
+.mobile-loading-caption {
+  position: absolute;
+  left: 7vw;
+  bottom: max(6vh, env(safe-area-inset-bottom));
+  width: min(440px, 70vw);
+  font-family: system-ui;
+  text-shadow: 0 2px 8px #000;
+}
+.mobile-loading-caption > span {
+  font-size: 14px;
+  letter-spacing: 0.25em;
+  color: #d5b68b;
+}
+.mobile-loading h2 {
+  margin: 8px 0 14px;
+  font-size: clamp(21px, 3vw, 34px);
+}
+.mobile-loading p {
+  font-size: 12px;
+  color: #c8c1af;
+}
+.mobile-loading-track {
+  height: 3px;
+  background: #ba9e7240;
+  overflow: hidden;
+}
+.mobile-loading-track i {
+  display: block;
+  width: 30%;
+  height: 100%;
+  background: #ead0a0;
+  animation: mobile-load-slide 2s ease-in-out infinite;
+}
+@keyframes mobile-load-slide {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(440%);
+  }
+}
+
+.mobile-toast {
+  position: fixed;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  z-index: 100;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: #131c20e8;
+  color: #fff;
+  pointer-events: none;
+}
+
+.mobile-actions button {
+  min-width: 38px;
+  padding: 7px 8px;
+}
+.mobile-actions [aria-pressed="true"],
+.mobile-groups [aria-pressed="true"] {
+  background: #754a2c;
+  border-color: #f4c785;
+}
+.mobile-groups small {
+  display: block;
+  font-size: 10px;
+  line-height: 12px;
+}
+.mobile-groups button {
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: none;
+}
+
+.mobile-countries-launchers {
+  position: fixed;
+  z-index: 75;
+  left: 8px;
+  bottom: 32px;
+  display: flex;
+  gap: 8px;
+}
+.mobile-countries-launchers button,
+.mobile-country-picker button {
+  min-height: 44px;
+  border: 1px solid #b78d56;
+  background: #172329;
+  color: #f5e3c7;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font: 14px system-ui;
+}
+.mobile-country-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0009;
+  display: grid;
+  place-items: center;
+}
+.mobile-country-picker {
+  width: min(460px, 90vw);
+  max-height: 90dvh;
+  overflow: auto;
+  background: #152025;
+  padding: 16px;
+  border: 1px solid #b78d56;
+  border-radius: 12px;
+  color: #fff;
+}
+.mobile-country-picker header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.mobile-country-picker > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.mobile-groups {
+  padding: 4px;
+  background: transparent;
+}
+.mobile-groups span {
+  margin: 0 0 3px 2px;
+  font-size: 10px;
+  text-shadow: 0 1px 3px #000;
+}
+.mobile-groups button {
+  margin-right: 3px;
+}
+
+.mobile-groups button {
+  padding: 4px;
+  white-space: nowrap;
+  width: 44px;
+  font-size: 12px;
+}
+.mobile-country-hit {
+  position: fixed;
+  z-index: 76;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+
+.mobile-guide {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.mobile-guide select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  background: #172329;
+  color: #fff;
+  border: 1px solid #71827a;
+  border-radius: 6px;
+  margin: 8px 0;
+  font-size: 16px;
+}
+.mobile-guide h3 {
+  margin-bottom: 0;
+}
+.mobile-guide h4 {
+  color: #e7c28f;
+  margin: 14px 0 4px;
+}
+.mobile-guide p {
+  margin: 5px 0 12px;
+}
+.mobile-guide small {
+  display: block;
+  color: #adbeb7;
+}
+.mobile-panel-tabs button {
+  padding: 7px 6px;
+}
+
+html.mobile-game button,
+html.mobile-game #screen,
+.mobile-groups,
+.mobile-sidebar-tools {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.mobile-groups button:first-of-type {
+  width: auto;
+  min-width: 82px;
+}

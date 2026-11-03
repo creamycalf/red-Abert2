@@ -314,6 +314,9 @@ export class Win32GameVm implements VmShell {
   setMasterVolume(linear: number): void {
     this.core.setMasterVolume(linear);
   }
+  configureAudio(options: import('./audio').AudioPresentationOptions): void {
+    this.audio.configurePresentation(options);
+  }
 
   getGamePerformance(): Promise<GamePerformanceSample | null> {
     return this.core.getGamePerformance();

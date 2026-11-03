@@ -1,0 +1,15 @@
+Mobile loading artwork
+
+Generated using the built-in image_gen tool for this private adaptation.
+Asset: public/images/mobile-loading-background.png
+The application draws its loading status separately; the image contains no UI or text.
+
+Final generation prompt:
+Create a full-bleed panoramic 2.2:1 landscape illustration as the loading screen background of a Red Alert 2 inspired mobile strategy game. Alternate-history cold-war military base at dawn, three heavy tracked tanks ready to deploy on a wet concrete apron, an industrial hangar with a subtle crimson beacon, distant Tesla coil blue glow and radar dishes, a large airship far away in a misty amber sky. Strong readable silhouettes, detailed painted game key art, realistic steel texture, restrained dark graphite, army olive, red and warm gold palette. Tanks on left and middle; bottom 25 percent naturally dark and quiet for a separately drawn loading label. Cinematic and atmospheric, no interface at all. Fill all four edges with artwork, no frame, no borders, no text, no lettering, no logo, no progress bar, no watermarks.
+
+Additional artwork generated with the built-in image_gen tool for version 0.8.6:
+public/images/mobile-loading-campaign.png
+public/images/mobile-loading-skirmish.png
+public/images/mobile-loading-save.png
+
+Prompt set: full-width 16:9 cinematic painted Red Alert 2 mobile loading backgrounds, full bleed, no borders, lettering, logos or watermark, bottom quarter dark and quiet for app-rendered captions. Campaign: Allied naval fleet, destroyer, cold blue harbor, coastal city, radar and aircraft at dawn, retro-futuristic military technology. Skirmish: twin-barrel heavy tanks crossing a desert at sunset, industrial base and Tesla tower, burnt orange/amber sky and charcoal silhouettes. Save restore: empty retro-futuristic command room at night, green phosphor radar, tactical terrain table, old computer and radio consoles, olive green/brass palette, wide high-angle view.

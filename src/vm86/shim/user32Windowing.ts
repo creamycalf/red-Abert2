@@ -569,6 +569,48 @@ export function withUser32Windowing<TBase extends Constructor<Gdi32Chain>>(Base:
       return { x, y };
     }
 
+    inspectVisibleControlLayout() {
+      return super.inspectVisibleControlContent((hwnd) => this.screenRect(hwnd));
+    }
+
+    selectVisibleCombo(id: number, index: number) {
+      const matches = [...this.controlIds].filter(
+        ([hwnd, value]) =>
+          value === id &&
+          this.isWindowTreeVisible(hwnd) &&
+          this.windowClassNames.get(hwnd)?.toLowerCase() === 'combobox',
+      );
+      if (matches.length !== 1) throw new Error('Selection control is not uniquely visible');
+      const hwnd = matches[0]![0],
+        items = this.controlItems.get(hwnd) ?? [];
+      if (!Number.isInteger(index) || index < 0 || index >= items.length) throw new Error('Invalid selection index');
+      this.setComboDropped(hwnd, false);
+      if (this.captureWindow === hwnd) this.captureWindow = 0;
+      this.controlSelections.set(hwnd, index);
+      this.invalidateWindow(hwnd);
+      // Owner-drawn controls can implement CB_SETCURSEL in their guest WndProc, outside shim fallback state.
+      this.pendingHostDispatches.push({
+        hwnd,
+        message: 0x14e,
+        wParam: index,
+        lParam: 0,
+        time: this.clock.now() >>> 0,
+        x: this.cursorX,
+        y: this.cursorY,
+      });
+      // Shell loops may omit DispatchMessage. Deliver CBN_SELCHANGE through the same callback bridge as host input.
+      this.pendingHostDispatches.push({
+        hwnd: this.windowParents.get(hwnd) ?? 0,
+        message: 0x111,
+        wParam: (1 << 16) | id,
+        lParam: hwnd,
+        time: this.clock.now() >>> 0,
+        x: this.cursorX,
+        y: this.cursorY,
+      });
+      return { selection: index };
+    }
+
     protected screenRect(hwnd: number): { x: number; y: number; width: number; height: number } {
       if (!hwnd) return { x: 0, y: 0, width: this.displayWidth, height: this.displayHeight };
       const origin = this.screenOrigin(hwnd);
@@ -622,7 +664,7 @@ export function withUser32Windowing<TBase extends Constructor<Gdi32Chain>>(Base:
       return closedHeight;
     }
 
-    /** RA2 的 owner-draw 下拉列表只把右侧三角作为展开按钮；文字区由 Gadget 保持静态。 */
+    /** Owner-drawn shell dropdowns reserve the text field for their native Gadget. */
     protected isComboDropButtonHit(hwnd: number, lParam: number): boolean {
       const shell = this.gameProfile.shell;
       const style = this.windowLongs.get(`${hwnd}:-16`) ?? 0;
@@ -631,7 +673,6 @@ export function withUser32Windowing<TBase extends Constructor<Gdi32Chain>>(Base:
       if (!rect || rect.width <= 0 || rect.height <= 0) return false;
       const x = (lParam << 16) >> 16;
       const y = lParam >> 16;
-      // 资源中的三角按钮宽度约为框宽的 1/6；限制在 16..24px，适配 800×600 UI。
       const buttonWidth = Math.max(16, Math.min(24, Math.ceil(rect.width / 6)));
       return x >= rect.width - buttonWidth && x < rect.width && y >= 0 && y < rect.height;
     }

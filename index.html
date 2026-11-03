@@ -17,9 +17,34 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ra2.games">
     <link rel="stylesheet" href="/src/ui/pages/game/styles.css">
+    <script>
+    if (new URLSearchParams(location.search).get('mobile') === '1')
+      document.documentElement.classList.add('mobile-initial-enabled');
+    </script>
+    <style>
+    .mobile-initial {
+      display: none;
+    }
+    .mobile-initial-enabled .mobile-initial {
+      display: block;
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: #171a1b url("/images/mobile-loading-background.png") center / cover no-repeat;
+      color: #f3e6cd;
+      font: 22px system-ui;
+    }
+    .mobile-initial p {
+      position: absolute;
+      left: 7vw;
+      bottom: 8vh;
+    }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="mobile-initial"><p>正在加载游戏…</p></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,0 +1,9 @@
+Android launcher icon for 红色警戒2
+
+Generated using the built-in image_gen tool for this private adaptation.
+Asset: android/app/src/main/res/drawable-nodpi/ic_launcher.png
+The adaptive foreground uses a 12% resource inset to preserve the star under launcher masks.
+Legacy bitmap and adaptive icon resources both reference the same generated image.
+
+Final generation prompt:
+Create a square Android launcher icon for a personal Red Alert 2 game app. A bold crimson red five-point military star made of enamel and dark steel, with a large metallic ivory numeral '2' embossed in the center, subtle gunmetal circular crest behind it. Deep charcoal background with a restrained red glow. Classic late-1990s alternate-history RTS aesthetic, premium painted game emblem, extremely strong silhouette and high contrast recognizable at 48 pixels. Keep the complete star and numeral inside the central 62 percent of the square so Android circular and squircle masks cannot cut them off. Full bleed background to every edge. Straight-on symmetric view. Only the single numeral 2; no other text, no captions, no small lettering, no scenery, no tanks, no mockup, no border outside the icon, no rounded-corner frame, no watermark.

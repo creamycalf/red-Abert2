@@ -17,6 +17,8 @@ import { formatNetworkStatus } from './networkStatus';
 import { activeCheatGameForPhase } from './cheatGuides';
 import { gameRunning, networkStatus } from './state/uiState';
 import type { RuntimeToolbar } from './runtimeToolbar';
+import { mobileShell, mobileLoadingScene } from './mobileState';
+import { loadingSceneForPage } from './mobileLoadingScene';
 
 export interface VmPageRuntimeCallbackDeps {
   canvas: HTMLCanvasElement;
@@ -91,6 +93,8 @@ export function createVmRuntimeCallbacks(deps: VmPageRuntimeCallbackDeps): GameV
       if (next.phase === 'exited') queueMicrotask(() => void onFinishExited(next.detail));
     },
     onShellPage(title) {
+      mobileLoadingScene.set(loadingSceneForPage(title ?? '', mobileLoadingScene.getSnapshot()));
+      mobileShell.set(title ?? '');
       updateOperationContext({ shell: title });
       if (title) canvas.dataset.shellPage = title;
       else delete canvas.dataset.shellPage;

@@ -1,5 +1,6 @@
 import { createNativeControl, type NativeControlProfile } from '../shared/nativeControl';
 import type { GameRuntimeHooks } from '../runtimeHooks';
+import { withRa2MobileControl } from './mobileControl';
 
 /** RA2 1.006: independently traced constructors (Unit 6FA400, Infantry 4FF640, Aircraft 413A40, Building 438CE0). */
 export const RA2_CONTROL_PROFILE: NativeControlProfile = {
@@ -231,5 +232,7 @@ export const RA2_CONTROL_PROFILE: NativeControlProfile = {
   hook: { address: 0x5406ac, bytes: [0x8a, 0x0d, 0x58, 0x09, 0xa4, 0] },
 };
 
-export const createRa2Control: NonNullable<GameRuntimeHooks['createControl']> = (memory, reserve) =>
-  createNativeControl(memory, reserve, RA2_CONTROL_PROFILE);
+export const createRa2Control: NonNullable<GameRuntimeHooks['createControl']> = (memory, reserve) => {
+  const control = createNativeControl(memory, reserve, RA2_CONTROL_PROFILE);
+  return control ? withRa2MobileControl(control, memory, RA2_CONTROL_PROFILE, reserve) : null;
+};

@@ -184,6 +184,9 @@ export class WorkerVmClient implements VmShell {
   setMasterVolume(linear: number): void {
     this.send({ type: 'volume', linear });
   }
+  configureAudio(options: import('./audio').AudioPresentationOptions): void {
+    this.audio.configurePresentation(options);
+  }
 
   async getGamePerformance(): Promise<GamePerformanceSample | null> {
     return this.request((requestId) => ({ type: 'game-performance', requestId }));

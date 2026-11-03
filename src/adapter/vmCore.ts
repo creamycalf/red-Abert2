@@ -568,6 +568,12 @@ export class VmCore {
   }
 
   async gameControl(method: string, params?: unknown): Promise<unknown> {
+    if (method === 'ui.layout') return this.shim?.inspectVisibleControlLayout() ?? [];
+    if (method === 'ui.select') {
+      if (!this.shim?.inspectShellPageTitle()) throw new Error('A native menu must be active');
+      const p = params as { id: number; index: number };
+      return this.shim.selectVisibleCombo(p?.id, p?.index);
+    }
     if (method === 'ui.status') {
       const page = this.shim?.inspectShellPageTitle() ?? null;
       const battleResult = this.control?.battleResult?.() ?? null;

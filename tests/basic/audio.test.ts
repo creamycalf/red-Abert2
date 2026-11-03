@@ -576,6 +576,29 @@ describe('PCM 流 worklet 处理器生命周期', () => {
     processor.port.onmessage?.({ data: { kind: 'destroy' } });
   });
 
+  it('conceals stalled dynamic PCM without stopping its clock, then resumes only fresh samples', async () => {
+    const Processor = await loadProcessor();
+    const processor = new Processor();
+    const send = (data: unknown) => processor.port.onmessage?.({ data });
+    const output = new Float32Array(128);
+    const reports = vi.fn();
+    processor.port.postMessage = reports;
+    send({ kind: 'create', channels: 1, frames: 256, frequency: 48000, loop: true, frame: 0, underrunSeconds: 0.75 });
+    send({ kind: 'update', offsetFrames: 0, data: new Float32Array(256).fill(0.5) });
+    processor.process(null, [[output]]);
+    expect(output.every((v) => v === 0.5)).toBe(true);
+    (globalThis as unknown as Record<string, unknown>).currentTime = 1;
+    processor.process(null, [[output]]);
+    expect(output.every((v) => v === 0)).toBe(true);
+    expect(reports).toHaveBeenCalledWith(expect.objectContaining({ playing: true }));
+    send({ kind: 'update', offsetFrames: 0, data: new Float32Array(128).fill(0.25) });
+    processor.process(null, [[output]]);
+    expect(output.every((v) => v === 0.25)).toBe(true);
+    processor.process(null, [[output]]);
+    expect(output.every((v) => v === 0)).toBe(true);
+    send({ kind: 'destroy' });
+  });
+
   it('destroy 后 process 返回 false，浏览器才能回收已断开的节点', async () => {
     const Processor = await loadProcessor();
     const processor = new Processor();

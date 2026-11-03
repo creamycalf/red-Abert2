@@ -57,6 +57,11 @@ export interface WebAudioPcmSinkOptions {
   /** Development diagnostics: log sink state and guest audio activity at this interval, plus every AudioContext state change. */
   diagnosticsIntervalMs?: number;
 }
+export interface AudioPresentationOptions {
+  active?: boolean;
+  /** Opt-in concealment for dynamically refilled streams. Zero preserves DirectSound looping semantics. */
+  streamUnderrunSeconds?: number;
+}
 
 interface PcmBufferState {
   format: PcmWaveFormat;
@@ -82,6 +87,7 @@ interface PcmBufferState {
   volume: number;
   pan: number;
   frequency: number;
+  lastWriteAt: number;
 }
 
 /** Convert DirectSound volume in hundredths of a dB to linear WebAudio gain. */
@@ -118,6 +124,9 @@ export class WebAudioPcmSink {
   private masterGain: GainNode | null = null;
   /** Linear master gain 0..1, applied after all buffers and before the destination. */
   private masterVolume = DEFAULT_MASTER_VOLUME;
+  private active = true;
+  private streamUnderrunSeconds = 0;
+  private activityRevision = 0;
 
   /** Guest activity since the last diagnostics line; only maintained when diagnostics are enabled. */
   private readonly activity = { plays: 0, stops: 0, writes: 0, writeBytes: 0, errors: 0, lastError: '' };
@@ -157,6 +166,7 @@ export class WebAudioPcmSink {
       volume: 0,
       pan: 0,
       frequency: normalized.nSamplesPerSec,
+      lastWriteAt: 0,
     });
   }
 
@@ -202,6 +212,7 @@ export class WebAudioPcmSink {
     // switch to one live ring player; subsequent writes update only the PCM mirror without resetting the playback cursor.
     const switchToLiveStream = state.playing && state.loop && state.source !== null;
     state.pcm.set(bytes.subarray(0, length), start);
+    state.lastWriteAt = this.context?.currentTime ?? 0;
     state.decoded = null;
     if (switchToLiveStream) this.startLiveStream(state);
     // Worklet path: synchronize the written range with the audio-thread renderer immediately.
@@ -293,6 +304,27 @@ export class WebAudioPcmSink {
     }
   }
 
+  configurePresentation(options: AudioPresentationOptions): void {
+    if (this.destroyed) return;
+    if (options.streamUnderrunSeconds !== undefined) {
+      this.streamUnderrunSeconds = Math.max(0, options.streamUnderrunSeconds);
+      for (const state of this.buffers.values())
+        this.postWorkletMessage(state, { kind: 'underrun-policy', seconds: this.streamUnderrunSeconds });
+    }
+    if (options.active === undefined) return;
+    this.active = options.active;
+    const revision = ++this.activityRevision;
+    if (!this.active) {
+      // Suspend the clock as well as the speaker output while the host is backgrounded.
+      void this.context
+        ?.suspend()
+        .then(() => {
+          if (revision !== this.activityRevision && this.active) void this.unlock();
+        })
+        .catch((error) => this.report(error));
+    } else void this.unlock();
+  }
+
   getMasterVolume(): number {
     return this.masterVolume;
   }
@@ -364,7 +396,7 @@ export class WebAudioPcmSink {
 
   /** Must be called from a user gesture such as pointerdown/keydown. */
   async unlock(): Promise<boolean> {
-    if (this.destroyed) return false;
+    if (this.destroyed || !this.active) return false;
     const context = this.ensureContext();
     if (!context) return false;
     try {
@@ -425,7 +457,7 @@ export class WebAudioPcmSink {
   }
 
   private start(state: PcmBufferState): void {
-    if (!state.playing || state.pcm.byteLength === 0) return;
+    if (!this.active || !state.playing || state.pcm.byteLength === 0) return;
     const context = this.ensureContext();
     if (!context) return;
     this.startAt(state, context.currentTime);
@@ -481,6 +513,7 @@ export class WebAudioPcmSink {
       frequency: state.frequency,
       loop: state.loop,
       frame,
+      underrunSeconds: this.streamUnderrunSeconds,
     });
     // Initial full synchronization: convert the existing mirror to interleaved Float32 and send it to the worklet once.
     this.postWorkletUpdate(state, worklet, 0, state.pcm);
@@ -605,6 +638,15 @@ export class WebAudioPcmSink {
     if (totalFrames <= 0) return;
     const outputRate = output.sampleRate || this.context?.sampleRate || state.format.nSamplesPerSec;
     const step = state.frequency / Math.max(1, outputRate);
+    if (
+      state.loop &&
+      this.streamUnderrunSeconds > 0 &&
+      (this.context?.currentTime ?? playbackTime) - state.lastWriteAt >
+        Math.max(this.streamUnderrunSeconds, (2 * totalFrames) / state.frequency)
+    ) {
+      // Clear stale PCM, but advance the cursor so a producer waiting for free space can recover.
+      state.pcm.fill(state.format.wBitsPerSample === 8 ? 128 : 0);
+    }
     // Use a whole-buffer Int16Array view for common 16-bit PCM, avoiding per-sample DataView branches;
     // fall back to individual sample reads for other bit depths.
     const samples16 =

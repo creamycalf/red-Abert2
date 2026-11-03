@@ -1,5 +1,10 @@
+import { createRegionPresentation } from '../../../graphics/regionPresentation';
+import { mobileRegions } from './mobileViewport';
 import { t } from '../../shared/i18n/translate';
 import type { LiveModelId } from './experiments/modelProbe';
+import { mobileEnabled, mobileVm, mobileZoomSupported } from './mobileState';
+import { loadBundledGame } from './bundledSource';
+import { createSavePackage, readSavePackage, importSavePackage } from '../../../adapter/saveTransfer';
 import { FrameEffectController } from '../../../app/session/frameEffectController';
 import { controlSession } from './controlSession';
 import { createApplicationControl } from '../../../app/session/applicationControl';
@@ -75,6 +80,35 @@ let controlSource: GameSource | null = null;
 let releaseControlRuntime: (() => Promise<void>) | null = null;
 let applicationControl: ReturnType<typeof createApplicationControl> | null = null;
 let capturePresentation: (() => Promise<unknown>) | null = null;
+
+export async function exportMobileSaves(): Promise<void> {
+  if (!controlSource || !activeVm) throw new Error('游戏尚未就绪');
+  await activeVm.flushFiles();
+  const archive = await createSavePackage(controlSource.files, controlSource.game.id);
+  const name = `ra2-save-${new Date().toISOString().replace(/[^a-zA-Z0-9]/g, '-')}.json`;
+  const native = (window as unknown as { RA2Android?: { exportSave(name: string, data: string): string } }).RA2Android;
+  if (native) {
+    const error = native.exportSave(name, await archive.text());
+    if (error) throw new Error(error);
+  } else {
+    const url = URL.createObjectURL(archive),
+      link = document.createElement('a');
+    link.href = url;
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+export async function importMobileSaves(file: File): Promise<void> {
+  if (!controlSource || !activeVm) throw new Error('游戏尚未就绪');
+  const archive = await readSavePackage(file, controlSource.game.id);
+  if (!window.confirm(`导入 ${archive.files.length} 个存档并返回主菜单？同名存档将被覆盖。`)) return;
+  await activeVm.stop();
+  await activeVm.flushFiles();
+  await importSavePackage(controlSource.files, archive);
+  window.location.reload();
+}
 
 export async function startVmPage(canvas: HTMLCanvasElement): Promise<void> {
   applicationControl?.dispose();
@@ -226,6 +260,15 @@ async function startVmRuntime(canvas: HTMLCanvasElement, source?: GameSource, st
       tick: () => renderDebug(),
     },
   );
+  mobileZoomSupported.set(mobileEnabled && frameRenderer.backend === 'WebGL2');
+  if (mobileZoomSupported.getSnapshot()) {
+    frameRenderer.setPostProcess((gl) =>
+      createRegionPresentation(gl, () => {
+        const frame = presenter.frame;
+        return frame ? mobileRegions(frame.width, frame.height, canvas.clientWidth / canvas.clientHeight) : [];
+      }),
+    );
+  }
   capturePresentation = async () => {
     const pending = frameCapture.request();
     presenter.invalidate();
@@ -403,7 +446,11 @@ async function startVmRuntime(canvas: HTMLCanvasElement, source?: GameSource, st
   };
   presenter.render();
   // The picker restores imported resources; starting the VM always requires explicit selection.
-  gameSource = source ?? (await selectGameFiles());
+  gameSource =
+    source ??
+    (await (mobileEnabled && new URLSearchParams(location.search).has('bundled')
+      ? loadBundledGame()
+      : selectGameFiles()));
   while (generation === pageGeneration && gameSource.game.id === 'mo') {
     const choice = await selectGameLaunch(gameSource);
     if (generation !== pageGeneration) break;
@@ -477,6 +524,7 @@ async function startVmRuntime(canvas: HTMLCanvasElement, source?: GameSource, st
   };
 
   const releaseRuntime = async () => {
+    mobileVm.set(null);
     if (generation === pageGeneration) resetOperationContext();
     effects.stop();
     activeNetworkCleanup?.();
@@ -527,6 +575,7 @@ async function startVmRuntime(canvas: HTMLCanvasElement, source?: GameSource, st
   };
 
   const installRuntimeInput = (startedVm: VmShell) => {
+    mobileVm.set(startedVm);
     if (activeInputCleanup) activeInputCleanup();
     // Overlay RA2's Win32 hardware cursor as a small independent framebuffer texture; it remains visible after Pointer Lock
     // hides the system cursor and moves without retransmitting the whole frame. At screen edges, clamp the logical

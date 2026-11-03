@@ -1,7 +1,7 @@
 /** Verify the materials shipped beside the production JavaScript and WASM, not just source comments. */
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(import.meta.dirname, '../..');
@@ -64,7 +64,15 @@ export function verifyDistribution(output = resolve(projectRoot, 'dist')): void 
   const index = resolve(output, 'licenses/index.html');
   for (const [, href] of readFileSync(index, 'utf8').matchAll(/href="([^"]+)"/g)) {
     const target = resolve(dirname(index), href!);
-    check(target.startsWith(resolve(output) + '/'), 'License index links must stay inside the distribution');
+    const within = relative(resolve(output), target);
+    check(
+      within !== '' &&
+        !isAbsolute(within) &&
+        within !== '..' &&
+        !within.startsWith('../') &&
+        !within.startsWith('..\\'),
+      'License index links must stay inside the distribution',
+    );
     readFileSync(target);
   }
   console.info('Distribution licenses, 7z source materials and preserved shader notices verified');

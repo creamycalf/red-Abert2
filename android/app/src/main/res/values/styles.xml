@@ -1,0 +1,7 @@
+<resources>
+    <style name="MobileGameTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#171a1b</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#d8ad74</item>
+    </style>
+</resources>

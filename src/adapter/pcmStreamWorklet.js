@@ -25,7 +25,8 @@ class Ra2PcmStreamProcessor extends AudioWorkletProcessor {
     super();
     liveProcessors++;
     /** @type {{ channels: number, frames: number, pcm: Float32Array, frame: number,
-     *   playing: boolean, loop: boolean, step: number, revision: number, lastPositionAt: number } | null} */
+     *   playing: boolean, loop: boolean, step: number, revision: number, lastPositionAt: number,
+     *   underrunSeconds: number, lastWriteAt: number, stale: boolean } | null} */
     this.state = null;
     /**
      * Set by destroy. process() must then return false: while it returns true the node keeps "active processing"
@@ -38,7 +39,8 @@ class Ra2PcmStreamProcessor extends AudioWorkletProcessor {
 
   /**
    * @param {{ kind: string, channels?: number, frames?: number, frequency?: number,
-   *   loop?: boolean, frame?: number, revision?: number, offsetFrames?: number, data?: Float32Array }} message
+   *   loop?: boolean, frame?: number, revision?: number, offsetFrames?: number, data?: Float32Array,
+   *   underrunSeconds?: number, seconds?: number }} message
    */
   onMessage(message) {
     switch (message.kind) {
@@ -55,11 +57,22 @@ class Ra2PcmStreamProcessor extends AudioWorkletProcessor {
           loop: message.loop,
           step: Math.max(0, message.frequency) / sampleRate,
           lastPositionAt: currentTime,
+          underrunSeconds: message.underrunSeconds ?? 0,
+          lastWriteAt: currentTime,
+          stale: false,
         };
         break;
       }
       case 'update': {
-        if (this.state) this.state.pcm.set(message.data, message.offsetFrames * this.state.channels);
+        if (this.state) {
+          this.state.pcm.set(message.data, message.offsetFrames * this.state.channels);
+          this.state.lastWriteAt = currentTime;
+          this.state.stale = false;
+        }
+        break;
+      }
+      case 'underrun-policy': {
+        if (this.state) this.state.underrunSeconds = Math.max(0, message.seconds ?? 0);
         break;
       }
       case 'play': {
@@ -114,6 +127,18 @@ class Ra2PcmStreamProcessor extends AudioWorkletProcessor {
     const length = output[0] ? output[0].length : 0;
     for (const channel of output) channel.fill(0);
     if (!state.playing || state.frames <= 0) return true;
+    // Dynamic producers can stall in a background tab or during heavy guest work. Do not repeat their last
+    // spoken fragment indefinitely. Keep the native clock moving, then resume only freshly written samples.
+    if (
+      state.loop &&
+      state.underrunSeconds > 0 &&
+      !state.stale &&
+      currentTime - state.lastWriteAt >
+        Math.max(state.underrunSeconds, (2 * state.frames) / Math.max(1, state.step * sampleRate))
+    ) {
+      state.pcm.fill(0);
+      state.stale = true;
+    }
 
     let frame = state.frame;
     for (let i = 0; i < length; i++) {

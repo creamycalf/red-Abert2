@@ -482,6 +482,7 @@ assert(existsSync('game/ra2/BINKW32.DLL'), '缺少 game/ra2/BINKW32.DLL');
 
 const server = await ensureServer();
 const browser = await chromium.launch({
+  executablePath: process.env.RA2_BROWSER_EXECUTABLE || undefined,
   headless: process.env.RA2_BROWSER_HEADFUL !== '1',
   // Both games use 640 MiB of v86 RAM. The headless renderer's default V8 old-space limit can occasionally cause
   // GC starvation or Target crashed after repeated frame probes/screenshots. Raise the limit for the test process

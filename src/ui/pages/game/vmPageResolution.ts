@@ -8,6 +8,10 @@ import type { SupportedGameId } from '../../../games/catalog';
 const STORED_RESOLUTION_PREFIX = 'vm-resolution-';
 
 export function loadStoredResolution(gameId: SupportedGameId): GameResolution | null {
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mobile') === '1') {
+    const aspect = Math.max(innerWidth, innerHeight) / Math.max(1, Math.min(innerWidth, innerHeight));
+    return { width: Math.min(1920, Math.max(800, Math.round((800 * aspect) / 8) * 8)), height: 800 };
+  }
   try {
     return parseGameResolution(window.localStorage.getItem(`${STORED_RESOLUTION_PREFIX}${gameId}`));
   } catch {

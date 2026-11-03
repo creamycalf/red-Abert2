@@ -11,9 +11,23 @@ dist/
 .env*
 .tmp*
 .idea
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+.private-apk/
+.private-apk-backups/
 # Do not commit local super-resolution weights or Python caches with source code.
 *.onnx
 *.onnx.data
 *.pth
 *.safetensors
 __pycache__/
+
+# Private mobile packages, saved games and signing material.
+*.apk
+*.aab
+*.sav
+*.SAV
+*.jks
+*.keystore

@@ -1,0 +1,16 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'local.ra2.mobile.full'
+    compileSdk 36
+    defaultConfig { applicationId 'local.ra2.mobile.full'; minSdk 29; targetSdk 36; versionCode 16; versionName '0.8.8' }
+    sourceSets { main { assets.srcDirs = [layout.buildDirectory.dir('generated/mobileAssets').get().asFile, '../../.private-apk'] } }
+    // Native file-prefix reads use AssetFileDescriptor, including the small launcher/configuration files.
+    androidResources { noCompress += ['mix', 'exe', 'dll', 'wasm', 'mmx', 'dat', 'tlb', 'lcf', 'dsk', 'bmp', 'ico', 'img', 'key', 'sed', 'sys', 'txt', 'map', 'ini'] }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+// Android's asset merger otherwise gunzips source archives and strips their extension.
+tasks.register('prepareMobileAssets', Sync) {
+    from('../../dist') { rename { name -> name.endsWith('.gz') ? name + '.bin' : name } }
+    into(layout.buildDirectory.dir('generated/mobileAssets'))
+}
+tasks.named('preBuild').configure { dependsOn('prepareMobileAssets') }

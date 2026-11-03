@@ -1,8 +1,22 @@
+import { mobilePoint, sidebarViewport } from './mobileViewport';
 import { t } from '../../shared/i18n/translate';
 import type { VmShell } from '../../../adapter/runtime';
 import { keyLParam, normalizePointerButton, rescaleLogicalPointer, virtualKey, win32CharacterCode } from './input';
 import { calculateCanvasFit } from './canvasFit';
 import { installFullscreenKeyboardLock, type KeyboardLockState } from './keyboardLock';
+import {
+  mobileBattle,
+  mobileEnabled,
+  mobileModifiers,
+  mobileShell,
+  mobileMenuWidth,
+  mobileZoom,
+  mobileZoomSupported,
+  mobilePanMode,
+  mobileSidebarExpanded,
+  mobileSidebarScroll,
+  mobileSidebarZoom,
+} from './mobileState';
 
 let canvasFitObserver: ResizeObserver | null = null;
 let canvasDprQuery: MediaQueryList | null = null;
@@ -119,8 +133,11 @@ export function installCanvasFit(
     if (!fit) return;
     const width = fit.backingWidth;
     const height = fit.backingHeight;
-    const cssWidth = `${fit.cssWidth}px`;
-    const cssHeight = `${fit.cssHeight}px`;
+    // Native RA2 shell templates occupy the centered 800px region even in a widescreen surface.
+    // Crop only the empty sides, then fit the complete template to the phone. Input uses this same CSS rect.
+    const nativeMenu = mobileEnabled && !mobileBattle.getSnapshot().ready && mobileMenuWidth.getSnapshot();
+    const cssWidth = `${nativeMenu ? (rect.width * nextFrameWidth) / Math.min(nativeMenu, nextFrameWidth) : fit.cssWidth}px`;
+    const cssHeight = `${nativeMenu ? (rect.height * nextFrameHeight) / Math.min(600, nextFrameHeight) : fit.cssHeight}px`;
     const aspectRatio = `${activeFrameWidth} / ${activeFrameHeight}`;
     const backingChanged = canvas.width !== width || canvas.height !== height;
     const cssChanged = canvas.style.width !== cssWidth || canvas.style.height !== cssHeight;
@@ -152,6 +169,9 @@ export function installCanvasFit(
   if (stage) canvasFitObserver.observe(stage);
   // Moving between displays or browser zoom can change devicePixelRatio without changing stage CSS size; track the resolution media query.
   const fitEnvironmentChange = () => fit();
+  const unsubscribeShell = mobileEnabled ? mobileShell.subscribe(fitEnvironmentChange) : () => {};
+  const unsubscribeBattle = mobileEnabled ? mobileBattle.subscribe(fitEnvironmentChange) : () => {};
+  const unsubscribeMenuWidth = mobileEnabled ? mobileMenuWidth.subscribe(fitEnvironmentChange) : () => {};
   // Refresh viewport-relative input bounds on window resize as well as stage changes.
   if (canvasWindowFitListener) window.removeEventListener('resize', canvasWindowFitListener);
   window.addEventListener('resize', fitEnvironmentChange);
@@ -173,6 +193,9 @@ export function installCanvasFit(
   return Object.assign(fit, {
     destroy() {
       ready = false;
+      unsubscribeShell();
+      unsubscribeBattle();
+      unsubscribeMenuWidth();
       observer.disconnect();
       query.removeEventListener('change', fitEnvironmentChange);
       document.removeEventListener('fullscreenchange', fitEnvironmentChange);
@@ -274,7 +297,9 @@ export function installGameInput(
   // See handleTouchPointerMove for the drag threshold, expressed in game pixels and adapted to canvas scaling.
   interface TouchGesture {
     pointerId: number;
-    phase: 'pending' | 'drag' | 'right' | 'two-pending' | 'two-drag';
+    phase: 'pending' | 'box-pending' | 'placement' | 'drag' | 'right' | 'two-pending' | 'two-drag' | 'pan' | 'sidebar';
+    sidebarOffset?: number;
+    downAt: number;
     downX: number;
     downY: number;
     downLParam: number;
@@ -287,7 +312,61 @@ export function installGameInput(
     timer: number;
   }
   let touchGesture: TouchGesture | null = null;
+  let placementClickTimer: number | undefined;
   const activeTouches = new Set<number>();
+  const contacts = new Map<number, { x: number; y: number }>();
+  let navigation: {
+    x: number;
+    y: number;
+    distance: number;
+    zoom: number;
+    moved: boolean;
+    sidebar?: boolean;
+    scroll?: number;
+    initialY?: number;
+  } | null = null;
+  let inputDisposed = false;
+  let panX = 0,
+    panY = 0,
+    panBusy = false;
+  const flushPan = async () => {
+    if (inputDisposed || panBusy || (!panX && !panY)) return;
+    panBusy = true;
+    const dx = panX,
+      dy = panY;
+    panX = 0;
+    panY = 0;
+    try {
+      await vm.gameControl('mobile.pan', { dx, dy });
+    } catch {
+      panX = panY = 0;
+    } finally {
+      panBusy = false;
+      if (panX || panY) void flushPan();
+    }
+  };
+  const navigate = (x: number, y: number) => {
+    if (!navigation) return;
+    const rect = currentCanvasRect(canvas),
+      scale = mobileZoomSupported.getSnapshot()
+        ? 600 / rect.height / mobileZoom.getSnapshot()
+        : getFrameSize().height / rect.height;
+    panX += (navigation.x - x) * scale;
+    panY += (navigation.y - y) * scale;
+    navigation.x = x;
+    navigation.y = y;
+    const frame = getFrameSize();
+    vm.setCursorPosition(Math.floor((frame.width - 168) / 2), Math.floor((frame.height - 32) / 2));
+    void flushPan();
+  };
+  const pair = () => {
+    const points = [...contacts.values()].slice(0, 2);
+    return {
+      x: (points[0]!.x + points[1]!.x) / 2,
+      y: (points[0]!.y + points[1]!.y) / 2,
+      distance: Math.hypot(points[0]!.x - points[1]!.x, points[0]!.y - points[1]!.y),
+    };
+  };
   /**
    * Shift+left-click repeats 10 times: dispatch the first pair immediately, then WM_LBUTTONDOWN/UP pairs every 50ms.
    * Remove Shift from repeated-click modifiers so the game receives 10 ordinary clicks. Swallow physical up while repetition runs because each pair supplies its own; physical up after completion is delivered normally and is harmless.
@@ -398,6 +477,11 @@ export function installGameInput(
       logicalMouseX = Math.max(0, Math.min(width - 1, ((event.clientX - rect.left) * width) / (rect.width || 1)));
       logicalMouseY = Math.max(0, Math.min(height - 1, ((event.clientY - rect.top) * height) / (rect.height || 1)));
     }
+    if (mobileEnabled && document.pointerLockElement !== canvas) {
+      const p = mobilePoint(logicalMouseX, logicalMouseY, width, height, rect.width / rect.height);
+      logicalMouseX = p.x;
+      logicalMouseY = p.y;
+    }
     return [Math.floor(logicalMouseX), Math.floor(logicalMouseY)];
   };
   const mousePosition = (event: MouseEvent): [number, number] => {
@@ -423,13 +507,14 @@ export function installGameInput(
     return false;
   };
   const modifierFlags = (event: MouseEvent): number => {
+    const mode = mobileEnabled ? mobileModifiers.getSnapshot() : 'none';
     // Some browsers briefly lose PointerEvent.ctrlKey/shiftKey during Pointer Lock;
     // heldKeys maintained by keyboard listeners is authoritative for the same input sequence. Take their union
     // so Ctrl+click reaches the original game with MK_CONTROL, required for force attack.
     return (
       mouseFlags |
-      (event.shiftKey || heldModifier(0x10) ? 0x0004 : 0) |
-      (event.ctrlKey || heldModifier(0x11) ? 0x0008 : 0)
+      (event.shiftKey || heldModifier(0x10) || mode === 'add' || mode === 'attack-move' ? 0x0004 : 0) |
+      (event.ctrlKey || heldModifier(0x11) || mode === 'force' || mode === 'attack-move' ? 0x0008 : 0)
     );
   };
 
@@ -543,6 +628,8 @@ export function installGameInput(
   /** Unified cleanup for all touch cancellation paths: send UP as required by the current phase and leave no fingerless timers running. */
   const cancelTouchGesture = (lParam = lastMouseLParam) => {
     const state = touchGesture;
+    const wasNavigating = !!navigation;
+    navigation = null;
     if (!state) return;
     clearTouchTimer();
     touchGesture = null;
@@ -550,7 +637,7 @@ export function installGameInput(
       mouseFlags &= ~0x0001;
       vm.setKeyState(0x01, false);
       vm.postMessage(0x0202, state.modifiers, lParam);
-    } else if (state.phase === 'right' || state.phase === 'two-drag') {
+    } else if (state.phase === 'right' || (state.phase === 'two-drag' && !wasNavigating)) {
       mouseFlags &= ~0x0002;
       vm.setKeyState(0x02, false);
       vm.postMessage(0x0205, state.modifiers, lParam);
@@ -570,10 +657,15 @@ export function installGameInput(
   };
 
   const handleTouchPointerDown = (event: PointerEvent) => {
+    if (placementClickTimer !== undefined) {
+      clearTimeout(placementClickTimer);
+      placementClickTimer = undefined;
+    }
     // On hybrid devices the expanded controls may cover the left touch area; collapse them on contact with the game.
     setControlsCollapsed(true);
     canvas.focus({ preventScroll: true });
     activeTouches.add(event.pointerId);
+    contacts.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const state = touchGesture;
     if (!state) {
       // First finger starts a single-finger gesture; require all other fingers released before starting another to avoid residual contacts.
@@ -586,23 +678,52 @@ export function installGameInput(
       const y = (lParam >>> 16) & 0xffff;
       touchGesture = {
         pointerId: event.pointerId,
-        phase: 'pending',
+        downAt: performance.now(),
+        phase:
+          mobileEnabled && mobileBattle.getSnapshot().placing && x < getFrameSize().width - 168
+            ? 'placement'
+            : 'pending',
         downX: x,
         downY: y,
         downLParam: lParam,
         downClientX: event.clientX,
         downClientY: event.clientY,
+        sidebarOffset:
+          mobileEnabled && mobileSidebarExpanded.getSnapshot() && x >= getFrameSize().width - 168
+            ? sidebarViewport(
+                getFrameSize().height,
+                window.innerWidth,
+                window.innerHeight,
+                mobileSidebarScroll.getSnapshot(),
+              ).offset
+            : undefined,
         twoClientX: 0,
         twoClientY: 0,
         modifiers: modifierFlags(event),
-        timer: window.setTimeout(touchHoldTimer, TOUCH_LONG_PRESS_MS),
+        timer: mobileEnabled ? 0 : window.setTimeout(touchHoldTimer, TOUCH_LONG_PRESS_MS),
       };
-    } else if (state.phase === 'pending') {
+    } else if (
+      state.phase === 'pending' ||
+      state.phase === 'box-pending' ||
+      state.phase === 'placement' ||
+      (mobileEnabled && (state.phase === 'pan' || state.phase === 'sidebar'))
+    ) {
       // Second finger: cancel long-press/tap intent and upgrade to a two-finger gesture.
       clearTouchTimer();
       state.phase = 'two-pending';
       state.twoClientX = state.downClientX;
       state.twoClientY = state.downClientY;
+      if (mobileEnabled && mobileBattle.getSnapshot().ready && contacts.size >= 2) {
+        const p = pair();
+        navigation = {
+          ...p,
+          zoom: state.sidebarOffset === undefined ? mobileZoom.getSnapshot() : mobileSidebarZoom.getSnapshot(),
+          moved: false,
+          sidebar: state.sidebarOffset !== undefined,
+          scroll: mobileSidebarScroll.getSnapshot(),
+          initialY: p.y,
+        };
+      }
     }
     // Ignore extra fingers after single-finger drag/right or during two-finger phases.
     try {
@@ -613,11 +734,26 @@ export function installGameInput(
     event.preventDefault();
   };
 
+  // Commit one native rectangle only after the second-finger grace period. A quick single-finger
+  // release commits the same rectangle immediately; cancellation never becomes a tap/order.
+  const beginTouchBox = (state: TouchGesture, latest: number) => {
+    clearTouchTimer();
+    state.phase = 'drag';
+    vm.setCursorPosition(state.downX, state.downY);
+    vm.postMessage(0x0200, state.modifiers, state.downLParam);
+    mouseFlags |= 0x0001;
+    vm.setKeyState(0x01, true);
+    vm.postMessage(0x0201, state.modifiers | 0x0001, state.downLParam);
+    vm.setCursorPosition(latest & 0xffff, (latest >>> 16) & 0xffff);
+    vm.postMessage(0x0200, state.modifiers | 0x0001, latest);
+    reportPress(state.downLParam, 'left', 'touch');
+  };
+
   const handleTouchPointerMove = (event: PointerEvent) => {
     const state = touchGesture;
     if (!state) return;
     const rect = currentCanvasRect(canvas);
-    const slopCss = Math.max(3, (5 * (rect.width || 1)) / getFrameSize().width);
+    const slopCss = mobileEnabled ? 9 : Math.max(3, (5 * (rect.width || 1)) / getFrameSize().width);
     if (state.phase === 'pending') {
       if (event.pointerId !== state.pointerId) return;
       const dx = event.clientX - state.downClientX;
@@ -625,23 +761,52 @@ export function installGameInput(
       // Express the threshold in game pixels, about 5px, independently of canvas CSS scale; avoid false drags when enlarged
       // and sluggish gestures when reduced or on phones.
       if (dx * dx + dy * dy <= slopCss * slopCss) return;
-      // Beyond the drag threshold, send left DOWN at the contact origin; the common path has already sent this WM_MOUSEMOVE.
-      clearTouchTimer();
-      state.phase = 'drag';
-      mouseFlags |= 0x0001;
-      vm.setKeyState(0x01, true);
-      vm.postMessage(0x0201, state.modifiers | 0x0001, state.downLParam); // WM_LBUTTONDOWN
-      reportPress(state.downLParam, 'left', 'touch');
+      if (state.sidebarOffset !== undefined) {
+        state.phase = 'sidebar';
+        const sidebar = sidebarViewport(getFrameSize().height, rect.width, rect.height, state.sidebarOffset);
+        mobileSidebarScroll.set(Math.max(0, Math.min(sidebar.max, state.sidebarOffset - dy / sidebar.scale)));
+        return;
+      }
+      if (
+        mobileEnabled &&
+        mobileBattle.getSnapshot().ready &&
+        mobilePanMode.getSnapshot() &&
+        state.downX < getFrameSize().width - 168
+      ) {
+        state.phase = 'pan';
+        navigation = {
+          x: state.downClientX,
+          y: state.downClientY,
+          distance: 0,
+          zoom: mobileZoom.getSnapshot(),
+          moved: true,
+        };
+        navigate(event.clientX, event.clientY);
+        return;
+      }
+      if (mobileEnabled && mobileBattle.getSnapshot().ready && state.downX < getFrameSize().width - 168) {
+        state.phase = 'box-pending';
+        state.timer = window.setTimeout(
+          () => {
+            if (touchGesture !== state || state.phase !== 'box-pending' || contacts.size !== 1) return;
+            const point = contacts.get(state.pointerId);
+            if (point) beginTouchBox(state, mouseLParam({ clientX: point.x, clientY: point.y } as PointerEvent));
+          },
+          Math.max(0, 280 - (performance.now() - state.downAt)),
+        );
+      } else beginTouchBox(state, mouseLParam(event));
       return;
     }
     if (state.phase === 'two-pending') {
+      if (event.pointerId !== state.pointerId) return;
       // If either finger exceeds the movement threshold, press right to begin panning. The cursor is already at the primary finger
       // through the common path; subsequent movement invokes native right-drag map scrolling.
       const dx = event.clientX - state.twoClientX;
       const dy = event.clientY - state.twoClientY;
       if (dx * dx + dy * dy <= slopCss * slopCss) return;
       state.phase = 'two-drag';
-      const lParam = (((logicalMouseY & 0xffff) << 16) | (logicalMouseX & 0xffff)) >>> 0;
+      const lParam = state.downLParam;
+      vm.setCursorPosition(state.downX, state.downY);
       mouseFlags |= 0x0002;
       vm.setKeyState(0x02, true);
       vm.postMessage(0x0204, state.modifiers | 0x0002, lParam); // WM_RBUTTONDOWN
@@ -654,9 +819,25 @@ export function installGameInput(
 
   const handleTouchPointerUp = (event: PointerEvent) => {
     activeTouches.delete(event.pointerId);
+    contacts.delete(event.pointerId);
+    if (
+      mobileEnabled &&
+      (touchGesture?.phase === 'pan' ||
+        touchGesture?.phase === 'sidebar' ||
+        ((touchGesture?.phase === 'two-drag' || touchGesture?.phase === 'two-pending') && navigation?.moved))
+    ) {
+      clearTouchTimer();
+      touchGesture = null;
+      navigation = null;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
     const state = touchGesture;
     if (!state) return;
-    const single = state.phase === 'pending' || state.phase === 'drag' || state.phase === 'right';
+    if (state.phase === 'box-pending' && event.pointerId === state.pointerId) beginTouchBox(state, mouseLParam(event));
+    const single =
+      state.phase === 'pending' || state.phase === 'placement' || state.phase === 'drag' || state.phase === 'right';
     if (single) {
       if (event.pointerId !== state.pointerId) return;
       clearTouchTimer();
@@ -664,14 +845,27 @@ export function installGameInput(
       touchGesture = null;
       const upLParam = mouseLParam(event);
       const modifiers = modifierFlags(event);
-      if (state.phase === 'pending') {
+      if (state.phase === 'placement') {
+        // Give the original game a logic tick to update its green/red foundation before clicking.
+        // Touch cancellation never reaches this branch; a second gesture invalidates the pending click.
+        vm.postMessage(0x0200, modifiers, upLParam);
+        placementClickTimer = window.setTimeout(() => {
+          placementClickTimer = undefined;
+          scheduleTapClick(upLParam, modifiers);
+        }, 90);
+      } else if (state.phase === 'pending') {
         // Match desktop click sequences: MOVE/DOWN/UP all use the contact origin. Small finger movement must not
         // turn a tap into a drag; otherwise the game sees different start/end positions,
         // moves only the cursor, and ignores the click. Double taps likewise send a complete second physical click.
         vm.postMessage(0x0200, modifiers, state.downLParam); // Return the cursor to the contact origin.
-        // Mobile adaptation: move to the target, read memory to confirm cursor shape, then press the button;
-        // attack/move destinations use right-click, while empty ground, friendly units, and UI use left-click.
-        scheduleTapClick(state.downLParam, modifiers);
+        // Native RA2 resolves ordinary left clicks into selection, movement, attack, or sidebar actions.
+        if (mobileEnabled && mobileBattle.getSnapshot().ready) {
+          // Native targeting caches the hovered object on its logic tick. Allow it to catch up after a camera move.
+          placementClickTimer = window.setTimeout(() => {
+            placementClickTimer = undefined;
+            scheduleTapClick(state.downLParam, modifiers);
+          }, 100);
+        } else scheduleTapClick(state.downLParam, modifiers);
       } else if (state.phase === 'drag') {
         mouseFlags &= ~0x0001;
         vm.setKeyState(0x01, false);
@@ -707,6 +901,13 @@ export function installGameInput(
   };
 
   const releaseInput = () => {
+    if (placementClickTimer !== undefined) {
+      clearTimeout(placementClickTimer);
+      placementClickTimer = undefined;
+    }
+    contacts.clear();
+    navigation = null;
+    panX = panY = 0;
     lockAfterPointerUp = false;
     compatibilityCtrlPrimaryActive = false;
     cancelDesktopMove();
@@ -753,11 +954,110 @@ export function installGameInput(
     'pointermove',
     (event) => {
       if (event.pointerType === 'touch') {
+        if (contacts.has(event.pointerId)) contacts.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (mobileEnabled && mobileBattle.getSnapshot().ready) {
+          if (touchGesture?.phase === 'sidebar') {
+            const rect = currentCanvasRect(canvas);
+            const sidebar = sidebarViewport(
+              getFrameSize().height,
+              rect.width,
+              rect.height,
+              touchGesture.sidebarOffset!,
+            );
+            mobileSidebarScroll.set(
+              Math.max(
+                0,
+                Math.min(
+                  sidebar.max,
+                  touchGesture.sidebarOffset! - (event.clientY - touchGesture.downClientY) / sidebar.scale,
+                ),
+              ),
+            );
+            event.preventDefault();
+            return;
+          }
+          if (contacts.size >= 2 && navigation && touchGesture) {
+            const p = pair();
+            const moved =
+              Math.hypot(p.x - navigation.x, p.y - navigation.y) > 5 || Math.abs(p.distance - navigation.distance) > 8;
+            if (navigation.moved || moved) {
+              navigation.moved = true;
+              touchGesture.phase = 'two-drag';
+              // Both pointer moves arrive separately; always restore the baseline when their distance returns.
+              if (navigation.sidebar) {
+                const zoom = Math.max(
+                  1,
+                  Math.min(2, (navigation.zoom * p.distance) / Math.max(1, navigation.distance)),
+                );
+                const oldView = sidebarViewport(
+                  getFrameSize().height,
+                  window.innerWidth,
+                  window.innerHeight,
+                  navigation.scroll!,
+                  navigation.zoom,
+                );
+                const newView = sidebarViewport(
+                  getFrameSize().height,
+                  window.innerWidth,
+                  window.innerHeight,
+                  navigation.scroll!,
+                  zoom,
+                );
+                mobileSidebarZoom.set(zoom);
+                mobileSidebarScroll.set(
+                  Math.max(
+                    0,
+                    Math.min(
+                      newView.max,
+                      oldView.offset + (navigation.initialY! - 44) / oldView.scale - (p.y - 44) / newView.scale,
+                    ),
+                  ),
+                );
+              } else {
+                mobileZoom.set(
+                  Math.max(0.75, Math.min(2, (navigation.zoom * p.distance) / Math.max(1, navigation.distance))),
+                );
+                navigate(p.x, p.y);
+              }
+            }
+            event.preventDefault();
+            return;
+          }
+          if (touchGesture?.phase === 'pan') {
+            navigate(event.clientX, event.clientY);
+            event.preventDefault();
+            return;
+          }
+        }
         // Every finger enters the gesture machine, since either may trigger a two-finger drag; only the primary finger uses the common path
         // to send WM_MOUSEMOVE. During two-finger panning, the edge-cursor timer instead
         // drives position here, avoiding movement that conflicts with the panning direction.
         // The cursor always follows the primary finger; two-finger drags hold right-click so the map pans with it.
-        if (event.isPrimary) vm.postMessage(0x0200, modifierFlags(event), mouseLParam(event));
+        if (event.isPrimary) {
+          const gesture = touchGesture;
+          if (mobileEnabled && gesture?.phase === 'two-drag') {
+            const rect = currentCanvasRect(canvas);
+            const frame = getFrameSize();
+            // Native right-drag uses a scroll-direction cursor. Mirror it for direct manipulation: map follows fingers.
+            logicalMouseX = Math.max(
+              1,
+              Math.min(
+                frame.width - 2,
+                gesture.downX - ((event.clientX - gesture.downClientX) * frame.width) / rect.width,
+              ),
+            );
+            logicalMouseY = Math.max(
+              1,
+              Math.min(
+                frame.height - 2,
+                gesture.downY - ((event.clientY - gesture.downClientY) * frame.height) / rect.height,
+              ),
+            );
+            vm.setCursorPosition(logicalMouseX, logicalMouseY);
+            lastMouseLParam = ((Math.floor(logicalMouseY) & 0xffff) << 16) | (Math.floor(logicalMouseX) & 0xffff);
+            vm.postMessage(0x0200, modifierFlags(event), lastMouseLParam);
+          } else vm.postMessage(0x0200, modifierFlags(event), mouseLParam(event));
+        }
         handleTouchPointerMove(event);
         event.preventDefault();
         return;
@@ -901,6 +1201,19 @@ export function installGameInput(
     (event) => {
       if (event.pointerType === 'touch') {
         activeTouches.delete(event.pointerId);
+        contacts.delete(event.pointerId);
+        if (
+          mobileEnabled &&
+          (touchGesture?.phase === 'pan' ||
+            ((touchGesture?.phase === 'two-drag' || touchGesture?.phase === 'two-pending') && navigation?.moved))
+        ) {
+          clearTouchTimer();
+          touchGesture = null;
+          navigation = null;
+          if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+          event.preventDefault();
+          return;
+        }
         cancelTouchGesture(mouseLParam(event));
         if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
         event.preventDefault();
@@ -1095,6 +1408,7 @@ export function installGameInput(
   return {
     adaptResolution,
     cleanup() {
+      inputDisposed = true;
       releaseInput();
       removers.splice(0).forEach((remove) => remove());
       if (document.pointerLockElement === canvas) {

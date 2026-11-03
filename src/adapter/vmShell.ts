@@ -58,6 +58,7 @@ export interface VmShell extends SessionRuntime {
   setCursorPosition(x: number, y: number): void;
   setGameClockRate(rate: number): number;
   setMasterVolume(linear: number): void;
+  configureAudio?(options: import('./audio').AudioPresentationOptions): void;
   getPointerState(): Promise<VmPointerState | null>;
   /** Read the actual logic frame rate on demand; return null if unsupported or unloaded. */
   getGamePerformance(): Promise<GamePerformanceSample | null>;

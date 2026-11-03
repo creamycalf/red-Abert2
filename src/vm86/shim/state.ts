@@ -384,21 +384,23 @@ export class ShimState {
   }
 
   /** Player-visible native control content, without callbacks, pointers or hidden windows. */
-  inspectVisibleControlContent() {
+  inspectVisibleControlContent(rectFor?: (hwnd: number) => { x: number; y: number; width: number; height: number }) {
     return [...this.windows.keys()]
       .filter((hwnd) => this.isWindowTreeVisible(hwnd))
       .flatMap((hwnd) => {
         const text = this.windowTexts.get(hwnd) ?? '';
         const displayText = this.controlDisplayTexts.get(hwnd);
         const items = this.controlItems.get(hwnd)?.map((item) => item.text) ?? [];
-        if (!text && displayText === undefined && !items.length) return [];
+        if (!text && displayText === undefined && !items.length && (!rectFor || !this.controlIds.has(hwnd))) return [];
         return [
           {
             id: this.controlIds.get(hwnd) ?? 0,
             className: this.windowClassNames.get(hwnd) ?? '',
+            ...(rectFor ? { rect: rectFor(hwnd) } : {}),
             text,
             ...(displayText === undefined ? {} : { displayText }),
             items,
+            ...(rectFor ? { selection: this.controlSelections.get(hwnd) ?? -1 } : {}),
           },
         ];
       });

@@ -7,6 +7,11 @@ import { usePanelWheelAcceleration } from './hooks/usePanelWheelAcceleration';
 import { AgentConnection } from './components/AgentConnection';
 import { recordOperationIssue } from '../../../platform/browser/operationMonitoring';
 import { Ra2ConsoleArtwork } from './components/ra2menu/Ra2ConsoleArtwork';
+import { mobileEnabled } from './mobileState';
+import { MobileControls } from './components/MobileControls';
+import { MobileLoading } from './components/MobileLoading';
+
+if (mobileEnabled) document.documentElement.classList.add('mobile-game');
 
 function LandscapeNotice({ id }: { id: string }) {
   return (
@@ -123,6 +128,8 @@ export function AppShell() {
       </button>
       <MainRegion />
       <Dialogs />
+      {mobileEnabled && <MobileControls />}
+      {mobileEnabled && <MobileLoading />}
     </div>
   );
 }
