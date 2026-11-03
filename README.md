@@ -4,7 +4,7 @@
 
 <h1>RA2 VM</h1>
 
-This repository contains the Red Alert 2 Android touch adaptation (0.8.8), based on RA2 VM. It includes original-program execution, touch selection and navigation, groups, offline campaign guides, single-player trainer controls, and Android packaging. See [Android build and controls](docs/MOBILE_ANDROID.md). Supply your own original game files; game resources, APKs, saves and signing keys are not included. Android device testing is still required.
+This repository contains the Red Alert 2 Android touch adaptation (0.8.9), based on RA2 VM. It includes original-program execution, touch selection and navigation, groups, offline campaign guides, single-player trainer controls, and Android packaging. See [Android build and controls](docs/MOBILE_ANDROID.md). Supply your own original game files; game resources, APKs, saves and signing keys are not included. Android device testing is still required.
 
 <br clear="right" />
 

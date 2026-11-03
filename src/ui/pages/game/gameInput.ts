@@ -1,4 +1,4 @@
-import { mobilePoint, sidebarViewport } from './mobileViewport';
+import { mobilePoint, sidebarViewport, panMobileViewport } from './mobileViewport';
 import { t } from '../../shared/i18n/translate';
 import type { VmShell } from '../../../adapter/runtime';
 import { keyLParam, normalizePointerButton, rescaleLogicalPointer, virtualKey, win32CharacterCode } from './input';
@@ -351,8 +351,16 @@ export function installGameInput(
       scale = mobileZoomSupported.getSnapshot()
         ? 600 / rect.height / mobileZoom.getSnapshot()
         : getFrameSize().height / rect.height;
-    panX += (navigation.x - x) * scale;
-    panY += (navigation.y - y) * scale;
+    const size = getFrameSize();
+    const delta = panMobileViewport(
+      (navigation.x - x) * scale,
+      (navigation.y - y) * scale,
+      size.width,
+      size.height,
+      rect.width / rect.height,
+    );
+    panX += delta.dx;
+    panY += delta.dy;
     navigation.x = x;
     navigation.y = y;
     const frame = getFrameSize();

@@ -3,6 +3,7 @@ import {
   mobileBattle,
   mobileEnabled,
   mobileZoom,
+  mobileViewOffset,
   mobileZoomSupported,
   mobileSidebarExpanded,
   mobileSidebarScroll,
@@ -40,11 +41,14 @@ export function mobileRegions(width: number, height: number, aspect: number): Pr
   const sidebarWidth = expanded ? sidebar.width / (displayHeight * aspect) : 168 / baseWidth;
   const visibleWidth = Math.min(mapWidth, (baseWidth * (1 - sidebarWidth)) / zoom),
     visibleHeight = Math.min(mapHeight, 568 / zoom);
+  const offset = mobileViewOffset.getSnapshot();
+  const maxX = (mapWidth - visibleWidth) / 2,
+    maxY = (mapHeight - visibleHeight) / 2;
   return [
     {
       source: {
-        x: (mapWidth - visibleWidth) / 2 / width,
-        y: (mapHeight - visibleHeight) / 2 / height,
+        x: (maxX + Math.max(-maxX, Math.min(maxX, offset.x))) / width,
+        y: (maxY + Math.max(-maxY, Math.min(maxY, offset.y))) / height,
         width: visibleWidth / width,
         height: visibleHeight / height,
       },
@@ -73,4 +77,19 @@ export function mobileRegions(width: number, height: number, aspect: number): Pr
 export function mobilePoint(x: number, y: number, width: number, height: number, aspect: number, reverse = false) {
   const p = mapRegionPoint(x / width, y / height, mobileRegions(width, height, aspect), reverse);
   return { x: p.x * width, y: p.y * height };
+}
+
+/** Pan the displayed crop first, passing only overflow to the original camera. Small campaign maps
+ * can clamp the native camera while substantial parts of its rendered frame remain outside this crop. */
+export function panMobileViewport(dx: number, dy: number, width: number, height: number, aspect: number) {
+  const region = mobileRegions(width, height, aspect)[0];
+  if (!region) return { dx, dy };
+  const maxX = (width - 168 - region.source.width * width) / 2;
+  const maxY = (height - 32 - region.source.height * height) / 2;
+  const currentX = region.source.x * width - maxX,
+    currentY = region.source.y * height - maxY;
+  const x = Math.max(-maxX, Math.min(maxX, currentX + dx));
+  const y = Math.max(-maxY, Math.min(maxY, currentY + dy));
+  mobileViewOffset.set({ x, y });
+  return { dx: dx - (x - currentX), dy: dy - (y - currentY) };
 }

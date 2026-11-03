@@ -2,7 +2,7 @@ import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
-const output = resolve('../../.toolchain/mobile-088-acceptance');
+const output = resolve('../../.toolchain/mobile-089-acceptance');
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ args: ['--js-flags=--max-old-space-size=4096'] });
 const context = await browser.newContext({
@@ -72,9 +72,32 @@ async function button(text: string) {
 
 const soviet = process.env.MOBILE_FACTION === 'soviet';
 const cdp = await context.newCDPSession(page);
+async function tapUi(name: string) {
+  const target = page.getByRole('button', { name, exact: true });
+  if (!(await target.isVisible())) {
+    if (/^第[1-5]队$/.test(name) || name === '保存编组')
+      await page.getByRole('button', { name: '编组', exact: true }).tap();
+    else if (['部署', '停止', '同类', '取消', '放大地图', '缩小地图', '恢复地图缩放'].includes(name))
+      await page.getByRole('button', { name: '操作', exact: true }).tap();
+  }
+  await target.tap();
+  if (/^第[1-5]队$/.test(name)) await page.locator('.mobile-groups').waitFor({ state: 'hidden', timeout: 5000 });
+}
+async function presentedViewport() {
+  const native = (await control('observe')).viewport;
+  const crop = await page.evaluate(async () => {
+    const path = '/src/ui/pages/game/mobileViewport.ts';
+    const canvas = document.querySelector('#screen')!;
+    const [w, h] = canvas.getAttribute('data-vm-resolution')!.split('x').map(Number);
+    const box = canvas.getBoundingClientRect();
+    const r = (await import(path)).mobileRegions(w!, h!, box.width / box.height)[0];
+    return { x: (r.source.x + r.source.width / 2) * w!, y: (r.source.y + r.source.height / 2) * h! };
+  });
+  return { ...native, x: native.x + crop.x, y: native.y + crop.y };
+}
 async function saveGroup(label: string) {
-  await page.getByRole('button', { name: '保存编组', exact: true }).tap();
-  await page.getByRole('button', { name: label, exact: true }).tap();
+  await tapUi('保存编组');
+  await tapUi(label);
 }
 
 try {
@@ -83,9 +106,9 @@ try {
   await button('GUI:Skirmish');
   await wait('setup', async () => !!(await control('ui.status'))?.controls?.find((c: any) => c.id === 1697));
   await page.waitForTimeout(2000);
-  await page.getByRole('button', { name: '打开我方国家选择', exact: true }).tap();
+  await tapUi('打开我方国家选择');
   await page.screenshot({ path: join(output, 'country-picker.png') });
-  await page.getByRole('button', { name: soviet ? '伊拉克' : '美国', exact: true }).tap();
+  await tapUi(soviet ? '伊拉克' : '美国');
   await page.waitForTimeout(1000);
   await page.screenshot({ path: join(output, 'country-selected.png') });
   console.log(
@@ -117,7 +140,7 @@ try {
   const mcv = state.entities.find((e: any) => e.owner === state.player && /MCV$/.test(e.type));
   await point(mcv.screen.x, mcv.screen.y);
   await wait('select MCV', async () => (await control('mobile.selection')).some((e: any) => String(e.id) === mcv.id));
-  await page.getByRole('button', { name: '部署', exact: true }).tap();
+  await tapUi('部署');
   await wait('deploy MCV', async () =>
     (await control('observe')).entities.some((e: any) => e.owner === state.player && /CNST$/.test(e.type)),
   );
@@ -129,7 +152,7 @@ try {
     await wait(`select tank ${i + 1}`, async () =>
       (await control('mobile.selection')).some((e: any) => String(e.id) === tank.id),
     );
-    if (i === 0) await page.getByRole('button', { name: '编组', exact: true }).tap();
+    if (i === 0) await tapUi('编组');
     await saveGroup(`第${i + 1}队`);
     await wait(
       `save group ${i + 1}`,
@@ -138,7 +161,7 @@ try {
     );
   }
   for (const i of [1, 2, 1]) {
-    await page.getByRole('button', { name: `第${i}队`, exact: true }).tap();
+    await tapUi(`第${i}队`);
     await wait(
       `recall group ${i}`,
       async () => {
@@ -151,7 +174,7 @@ try {
   await page.screenshot({ path: join(output, 'two-groups.png') });
   state = await control('observe');
   const before = state.entities.find((e: any) => e.id === tanks[0].id);
-  await point(before.screen.x + 180, before.screen.y + 90);
+  await point(before.screen.x + 180, before.screen.y - 90);
   await wait(
     'group one follows movement order',
     async () => {
@@ -161,7 +184,7 @@ try {
     15000,
   );
   const selection = (await control('mobile.selection')).map((e: any) => e.id);
-  const cameraBefore = (await control('observe')).viewport;
+  const cameraBefore = await presentedViewport();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 330, y: 150, id: 1 }] });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 350, y: 150, id: 1 }] });
   await page.waitForTimeout(180);
@@ -184,7 +207,7 @@ try {
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(700);
-  const cameraAfter = (await control('observe')).viewport;
+  const cameraAfter = await presentedViewport();
   assert(cameraAfter.x < cameraBefore.x && cameraAfter.y < cameraBefore.y, 'Map follows finger direction');
   console.log('PASS pan follows fingers', cameraBefore, cameraAfter);
   assert.deepEqual(
@@ -192,7 +215,7 @@ try {
     selection,
     'Two-finger map drag preserves selected group',
   );
-  await page.getByRole('button', { name: '第1队', exact: true }).tap();
+  await tapUi('第1队');
   await page.waitForTimeout(700);
   assert.equal(
     await page.evaluate(async () => {
@@ -202,7 +225,10 @@ try {
     1,
     'Parallel finger translation must not leave a zoom change',
   );
-  await page.getByRole('button', { name: '放大地图', exact: true }).tap();
+  await tapUi('第2队');
+  await tapUi('取消');
+  await wait('clear selection before zoom hit test', async () => (await control('mobile.selection')).length === 0);
+  await tapUi('放大地图');
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(output, 'map-zoom-in.png') });
   state = await control('observe');
@@ -213,8 +239,8 @@ try {
     async () => (await control('mobile.selection')).some((e: any) => String(e.id) === second.id),
     15000,
   );
-  await page.getByRole('button', { name: '缩小地图', exact: true }).tap();
-  await page.getByRole('button', { name: '缩小地图', exact: true }).tap();
+  await tapUi('缩小地图');
+  await tapUi('缩小地图');
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(output, 'map-zoom-out.png') });
 
@@ -252,9 +278,9 @@ try {
     keep,
     'Pinch preserves selection',
   );
-  await page.getByRole('button', { name: '恢复地图缩放', exact: true }).tap();
-  await page.getByRole('button', { name: '移图', exact: true }).tap();
-  const panBefore = (await control('observe')).viewport;
+  await tapUi('恢复地图缩放');
+  await tapUi('移图');
+  const panBefore = await presentedViewport();
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 390, y: 160, id: 1 }] });
   for (let i = 1; i <= 10; i++) {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 390 + i * 7, y: 160, id: 1 }] });
@@ -262,15 +288,15 @@ try {
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(600);
-  assert((await control('observe')).viewport.x < panBefore.x, 'One-finger pan moves native camera');
+  assert((await presentedViewport()).x < panBefore.x, 'One-finger pan moves displayed camera');
   assert.deepEqual(
     (await control('mobile.selection')).map((e: any) => e.id),
     keep,
     'One-finger pan preserves selection',
   );
-  await page.getByRole('button', { name: '移图', exact: true }).tap();
+  await tapUi('移图');
   console.log('PASS pinch and one-finger navigation preserve selected troops');
-  await page.getByRole('button', { name: '第1队', exact: true }).tap();
+  await tapUi('第1队');
   await page.waitForTimeout(500);
   state = await control('observe');
   await page.waitForTimeout(1500);
@@ -318,11 +344,11 @@ try {
       (await control('mobile.selection')).some((e: any) => String(e.id) === boxTank.id) &&
       (await page.getByRole('button', { name: '移图', exact: true }).getAttribute('aria-pressed')) === 'false',
   );
-  await page.getByRole('button', { name: '第1队', exact: true }).tap();
+  await tapUi('第1队');
   await page.waitForTimeout(500);
 
-  await page.getByRole('button', { name: '放大建造', exact: true }).tap();
-  const sidebarMapBefore = (await control('observe')).viewport;
+  await tapUi('放大建造');
+  const sidebarMapBefore = await presentedViewport();
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [
@@ -347,13 +373,13 @@ try {
     return (await import(p)).mobileSidebarZoom.getSnapshot();
   });
   assert(sidebarZoom > 1.5, 'Pinch enlarges the sidebar');
-  assert.deepEqual((await control('observe')).viewport, sidebarMapBefore, 'Sidebar pinch must not move map');
-  await page.getByRole('button', { name: '恢复建造栏缩放', exact: true }).tap();
+  assert.deepEqual(await presentedViewport(), sidebarMapBefore, 'Sidebar pinch must not move map');
+  await tapUi('恢复建造栏缩放');
   console.log('PASS independent sidebar pinch without map movement');
 
-  await page.getByRole('button', { name: '放大建造栏', exact: true }).tap();
-  await page.getByRole('button', { name: '缩小建造栏', exact: true }).tap();
-  await page.getByRole('button', { name: '手机菜单', exact: true }).tap();
+  await tapUi('放大建造栏');
+  await tapUi('缩小建造栏');
+  await tapUi('手机菜单');
   await page.screenshot({ path: join(output, 'menu-sidebar-accessible.png') });
   const resolution = (await page.locator('#screen').getAttribute('data-vm-resolution'))!.split('x').map(Number);
   await point(resolution[0]! - 102, 250);
@@ -367,7 +393,7 @@ try {
   await wait('power ready', async () =>
     (await control('observe')).production.some((e: any) => /POWR$/.test(e.type) && e.progress === 54),
   );
-  await page.getByRole('button', { name: '放大地图', exact: true }).tap();
+  await tapUi('放大地图');
   await point(resolution[0]! - 102, 250);
   await wait('placing', async () => (await control('mobile.observe')).placing);
   await wait(
@@ -400,7 +426,7 @@ try {
       'Construction preserves native group',
     );
   console.log('PASS zoomed production and placement, persistent groups');
-  await page.getByRole('button', { name: '手机菜单', exact: true }).tap();
+  await tapUi('手机菜单');
   await page.getByRole('button', { name: '原版菜单 / 保存 / 读取' }).tap();
   await button('GUI:SaveGame');
   await button('GUI:Save');
@@ -423,7 +449,7 @@ try {
   await wait('cold load', async () => !!(await control('ui.status'))?.battlefield?.ready, 240000);
   await page.waitForTimeout(1500);
   for (const id of [1, 2]) {
-    await page.getByRole('button', { name: `第${id}队`, exact: true }).tap();
+    await tapUi(`第${id}队`);
     await wait(
       `restored group ${id}`,
       async () => {

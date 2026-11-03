@@ -13,6 +13,7 @@ export const mobileSidebarZoom = createStore(1.5);
 export const mobileMenuWidth = createStore<number | null>(null);
 export const mobileZoomSupported = createStore(false);
 export const mobileZoom = createStore(1);
+export const mobileViewOffset = createStore({ x: 0, y: 0 });
 export const mobilePanMode = createStore(false);
 export const mobileModifiers = createStore<'none' | 'force' | 'attack-move' | 'add'>('none');
 export const mobileBattle = createStore<{
