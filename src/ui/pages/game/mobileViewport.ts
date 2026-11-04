@@ -28,7 +28,7 @@ export function sidebarViewport(
     max: nativeHeight - visible,
   };
 }
-/** Keep native sidebar and footer fixed; only the battlefield uses a movable camera and zoom. */
+/** Replace the native footer with the touch dock; keep the full construction sidebar accessible. */
 export function mobileRegions(width: number, height: number, aspect: number): PresentationRegion[] {
   if (!mobileEnabled || !mobileZoomSupported.getSnapshot() || !mobileBattle.getSnapshot().ready) return [];
   const zoom = mobileZoom.getSnapshot(),
@@ -36,11 +36,11 @@ export function mobileRegions(width: number, height: number, aspect: number): Pr
   const mapWidth = width - 168,
     mapHeight = height - 32;
   const expanded = mobileSidebarExpanded.getSnapshot();
-  const displayHeight = window.innerHeight;
+  const displayHeight = document.getElementById('screen')?.getBoundingClientRect().height || window.innerHeight;
   const sidebar = sidebarViewport(height, displayHeight * aspect, displayHeight, mobileSidebarScroll.getSnapshot());
   const sidebarWidth = expanded ? sidebar.width / (displayHeight * aspect) : 168 / baseWidth;
   const visibleWidth = Math.min(mapWidth, (baseWidth * (1 - sidebarWidth)) / zoom),
-    visibleHeight = Math.min(mapHeight, 568 / zoom);
+    visibleHeight = Math.min(mapHeight, 600 / zoom);
   const offset = mobileViewOffset.getSnapshot();
   const maxX = (mapWidth - visibleWidth) / 2,
     maxY = (mapHeight - visibleHeight) / 2;
@@ -52,7 +52,7 @@ export function mobileRegions(width: number, height: number, aspect: number): Pr
         width: visibleWidth / width,
         height: visibleHeight / height,
       },
-      target: { x: 0, y: 0, width: 1 - sidebarWidth, height: 568 / 600 },
+      target: { x: 0, y: 0, width: 1 - sidebarWidth, height: 1 },
     },
     {
       source: {
@@ -67,10 +67,6 @@ export function mobileRegions(width: number, height: number, aspect: number): Pr
         width: sidebarWidth,
         height: expanded ? 1 - 44 / displayHeight : 1,
       },
-    },
-    {
-      source: { x: 0, y: mapHeight / height, width: mapWidth / width, height: 32 / height },
-      target: { x: 0, y: 568 / 600, width: 1 - sidebarWidth, height: 32 / 600 },
     },
   ];
 }

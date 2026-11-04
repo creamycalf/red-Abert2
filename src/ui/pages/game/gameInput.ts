@@ -6,6 +6,7 @@ import { calculateCanvasFit } from './canvasFit';
 import { installFullscreenKeyboardLock, type KeyboardLockState } from './keyboardLock';
 import {
   mobileBattle,
+  mobileBuildCancel,
   mobileEnabled,
   mobileModifiers,
   mobileShell,
@@ -136,8 +137,8 @@ export function installCanvasFit(
     // Native RA2 shell templates occupy the centered 800px region even in a widescreen surface.
     // Crop only the empty sides, then fit the complete template to the phone. Input uses this same CSS rect.
     const nativeMenu = mobileEnabled && !mobileBattle.getSnapshot().ready && mobileMenuWidth.getSnapshot();
-    const cssWidth = `${nativeMenu ? (rect.width * nextFrameWidth) / Math.min(nativeMenu, nextFrameWidth) : fit.cssWidth}px`;
-    const cssHeight = `${nativeMenu ? (rect.height * nextFrameHeight) / Math.min(600, nextFrameHeight) : fit.cssHeight}px`;
+    const cssWidth = `${mobileEnabled && mobileBattle.getSnapshot().ready ? rect.width : nativeMenu ? (rect.width * nextFrameWidth) / Math.min(nativeMenu, nextFrameWidth) : fit.cssWidth}px`;
+    const cssHeight = `${mobileEnabled && mobileBattle.getSnapshot().ready ? rect.height : nativeMenu ? (rect.height * nextFrameHeight) / Math.min(600, nextFrameHeight) : fit.cssHeight}px`;
     const aspectRatio = `${activeFrameWidth} / ${activeFrameHeight}`;
     const backingChanged = canvas.width !== width || canvas.height !== height;
     const cssChanged = canvas.style.width !== cssWidth || canvas.style.height !== cssHeight;
@@ -701,7 +702,7 @@ export function installGameInput(
             ? sidebarViewport(
                 getFrameSize().height,
                 window.innerWidth,
-                window.innerHeight,
+                canvas.getBoundingClientRect().height,
                 mobileSidebarScroll.getSnapshot(),
               ).offset
             : undefined,
@@ -861,6 +862,17 @@ export function installGameInput(
           placementClickTimer = undefined;
           scheduleTapClick(upLParam, modifiers);
         }, 90);
+      } else if (state.phase === 'pending' && mobileEnabled && mobileBuildCancel.getSnapshot()) {
+        // Preserve native sidebar pause/cancel/refund semantics using inverse-mapped touch coordinates.
+        if (state.downX >= getFrameSize().width - 168) {
+          vm.postMessage(0x0200, modifiers, state.downLParam);
+          vm.setKeyState(2, true);
+          vm.postMessage(0x0204, modifiers | 2, state.downLParam);
+          vm.setKeyState(2, false);
+          vm.postMessage(0x0205, modifiers, state.downLParam);
+        } else {
+          mobileBuildCancel.set(false);
+        }
       } else if (state.phase === 'pending') {
         // Match desktop click sequences: MOVE/DOWN/UP all use the contact origin. Small finger movement must not
         // turn a tap into a drag; otherwise the game sees different start/end positions,
@@ -1000,14 +1012,14 @@ export function installGameInput(
                 const oldView = sidebarViewport(
                   getFrameSize().height,
                   window.innerWidth,
-                  window.innerHeight,
+                  canvas.getBoundingClientRect().height,
                   navigation.scroll!,
                   navigation.zoom,
                 );
                 const newView = sidebarViewport(
                   getFrameSize().height,
                   window.innerWidth,
-                  window.innerHeight,
+                  canvas.getBoundingClientRect().height,
                   navigation.scroll!,
                   zoom,
                 );

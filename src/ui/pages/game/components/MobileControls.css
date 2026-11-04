@@ -552,3 +552,67 @@ html.mobile-game #screen,
 .mobile-action-popup {
   bottom: calc(max(58px, env(safe-area-inset-bottom)) + var(--mobile-bottom-lift, 0px));
 }
+
+/* Reserve physical space so first-level controls never cover the game. */
+html.mobile-game.mobile-battle-dock #stage {
+  height: calc(100dvh - 52px - env(safe-area-inset-bottom) - var(--mobile-bottom-lift, 0px));
+}
+.mobile-actions {
+  inset: auto 0 var(--mobile-bottom-lift, 0px) 0;
+  height: calc(52px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  padding: 4px max(4px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom))
+    max(4px, env(safe-area-inset-left));
+  max-width: none;
+  gap: 4px;
+  background: #101a20;
+  pointer-events: auto;
+}
+.mobile-actions button {
+  flex: 1;
+  min-width: 0;
+  padding: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mobile-actions button:disabled {
+  opacity: 0.45;
+}
+.mobile-actions small {
+  display: block;
+  font-size: 10px;
+}
+.mobile-actions button:nth-child(2),
+.mobile-actions button:nth-child(6) {
+  flex: 1.6;
+}
+
+/* Assignment has separate targets and reserves its own space above recall shortcuts. */
+html.mobile-game.mobile-battle-dock.mobile-group-picker-open #stage {
+  height: calc(100dvh - 104px - env(safe-area-inset-bottom) - var(--mobile-bottom-lift, 0px));
+}
+.mobile-group-picker {
+  position: fixed;
+  z-index: 71;
+  left: 0;
+  right: 0;
+  bottom: calc(52px + env(safe-area-inset-bottom) + var(--mobile-bottom-lift, 0px));
+  height: 52px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px max(4px, env(safe-area-inset-right)) 4px max(4px, env(safe-area-inset-left));
+  background: #26352c;
+  color: #eee;
+  font: 12px system-ui;
+}
+.mobile-group-picker button {
+  flex: 1;
+  min-width: 44px;
+  height: 44px;
+  border: 1px solid #b49b66;
+  border-radius: 8px;
+  color: #fff;
+  background: #47513a;
+}

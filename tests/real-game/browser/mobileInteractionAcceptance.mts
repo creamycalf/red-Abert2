@@ -2,7 +2,7 @@ import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
-const output = resolve('../../.toolchain/mobile-089-acceptance');
+const output = resolve('../../.toolchain/mobile-0812-acceptance');
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ args: ['--js-flags=--max-old-space-size=4096'] });
 const context = await browser.newContext({
@@ -75,7 +75,7 @@ const cdp = await context.newCDPSession(page);
 async function tapUi(name: string) {
   const target = page.getByRole('button', { name, exact: true });
   if (!(await target.isVisible())) {
-    if (/^第[1-5]队$/.test(name) || name === '保存编组')
+    if (/^第[1-5]队$/.test(name) || name === '设置编组')
       await page.getByRole('button', { name: '编组', exact: true }).tap();
     else if (['部署', '停止', '同类', '取消', '放大地图', '缩小地图', '恢复地图缩放'].includes(name))
       await page.getByRole('button', { name: '操作', exact: true }).tap();
@@ -96,8 +96,8 @@ async function presentedViewport() {
   return { ...native, x: native.x + crop.x, y: native.y + crop.y };
 }
 async function saveGroup(label: string) {
-  await tapUi('保存编组');
-  await tapUi(label);
+  await tapUi('设置编组');
+  await tapUi(label.replace('第', '设为第').replace('队', '编组'));
 }
 
 try {
@@ -152,7 +152,7 @@ try {
     await wait(`select tank ${i + 1}`, async () =>
       (await control('mobile.selection')).some((e: any) => String(e.id) === tank.id),
     );
-    if (i === 0) await tapUi('编组');
+
     await saveGroup(`第${i + 1}队`);
     await wait(
       `save group ${i + 1}`,
@@ -160,6 +160,27 @@ try {
       15000,
     );
   }
+  const membershipBefore = (await control('mobile.observe')).groups.map((g: any) => [g.id, g.count]);
+  await tapUi('设置编组');
+  const mapWhileSetting = (await page.locator('#screen').boundingBox())!;
+  const picker = (await page.getByRole('group', { name: '设置编组选号' }).boundingBox())!;
+  assert(mapWhileSetting.y + mapWhileSetting.height <= picker.y + 1, 'Assignment picker reserves space');
+  await page.screenshot({ path: join(output, 'set-group-picker.png') });
+  await tapUi('第1队');
+  await wait(
+    'recall while setting finishes',
+    async () => await page.getByRole('button', { name: '第1队', exact: true }).isEnabled(),
+  );
+  assert.equal(await page.getByRole('group', { name: '设置编组选号' }).count(), 0);
+  assert.deepEqual(
+    (await control('mobile.observe')).groups.map((g: any) => [g.id, g.count]),
+    membershipBefore,
+    'Recall never overwrites group assignments',
+  );
+  assert(
+    (await control('mobile.selection')).some((e: any) => String(e.id) === tanks[0].id),
+    'Recall selects original first tank instead of assigning second tank',
+  );
   for (const i of [1, 2, 1]) {
     await tapUi(`第${i}队`);
     await wait(
@@ -389,6 +410,19 @@ try {
       (await page.locator('.mobile-panel').count()) === 0 &&
       (await control('observe')).production.some((e: any) => /POWR$/.test(e.type)),
   );
+  await tapUi('撤回建造');
+  await point(resolution[0]! - 102, 250);
+  await page.waitForTimeout(600);
+  await point(resolution[0]! - 102, 250);
+  await wait(
+    'native production cancelled',
+    async () => !(await control('observe')).production.some((e: any) => /POWR$/.test(e.type)),
+  );
+  await tapUi('取消');
+  await point(resolution[0]! - 102, 250);
+  await wait('production restarts', async () =>
+    (await control('observe')).production.some((e: any) => /POWR$/.test(e.type)),
+  );
   await control('mobile.trainer', { speed: 100 });
   await wait('power ready', async () =>
     (await control('observe')).production.some((e: any) => /POWR$/.test(e.type) && e.progress === 54),
@@ -400,6 +434,39 @@ try {
     'expanded sidebar closes for placement',
     async () => (await page.locator('.mobile-sidebar-tools').count()) === 0,
   );
+  await tapUi('取消放置');
+  await wait('placement cancelled', async () => !(await control('mobile.observe')).placing);
+  await point(resolution[0]! - 102, 250);
+  await wait('placement resumed', async () => (await control('mobile.observe')).placing);
+  for (const size of [
+    { width: 842, height: 430 },
+    { width: 800, height: 360 },
+    { width: 1000, height: 450 },
+  ]) {
+    await page.setViewportSize(size);
+    await page.waitForTimeout(300);
+    const map = (await page.locator('#screen').boundingBox())!;
+    const dock = (await page.locator('.mobile-actions').boundingBox())!;
+    assert(map.y + map.height <= dock.y + 1, 'Dock must not overlap the game');
+    for (const item of await page.locator('.mobile-actions button').all()) {
+      const b = (await item.boundingBox())!;
+      assert(b.x >= 0 && b.x + b.width <= size.width && b.y + b.height <= size.height, 'All shortcuts remain visible');
+    }
+  }
+  const regions = await page.evaluate(async () => {
+    const path = '/src/ui/pages/game/mobileViewport.ts';
+    const canvas = document.querySelector('#screen')!;
+    const [w, h] = canvas.getAttribute('data-vm-resolution')!.split('x').map(Number);
+    const box = canvas.getBoundingClientRect();
+    return (await import(path)).mobileRegions(w!, h!, box.width / box.height);
+  });
+  assert.equal(regions.length, 2, 'Native footer is replaced, not drawn above the touch dock');
+  assert.equal(regions[0].target.height, 1, 'Battlefield reaches the bottom of the canvas');
+  assert(
+    regions[0].source.y + regions[0].source.height <= (resolution[1]! - 32) / resolution[1]! + 1e-9,
+    'No native footer pixels sampled',
+  );
+  await page.screenshot({ path: join(output, 'non-overlapping-dock.png') });
   const yard = (await control('observe')).entities.find((e: any) => e.owner === state.player && /CNST$/.test(e.type));
   let placed = false;
   for (const [dx, dy] of [

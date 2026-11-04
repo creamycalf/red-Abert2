@@ -2,7 +2,7 @@ import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
-const output = resolve('../../.toolchain/mobile-089-acceptance');
+const output = resolve('../../.toolchain/mobile-0812-acceptance');
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ args: ['--js-flags=--max-old-space-size=4096'] });
 const context = await browser.newContext({
@@ -138,22 +138,23 @@ try {
   await wait('select campaign unit', async () =>
     (await control('mobile.selection')).some((e: any) => String(e.id) === hero.id),
   );
-  await page.getByRole('button', { name: '编组', exact: true }).tap();
-  await page.getByRole('button', { name: '保存编组', exact: true }).tap();
-  await page.getByRole('button', { name: '第1队', exact: true }).tap();
+  await page.getByRole('button', { name: '设置编组', exact: true }).tap();
+  await page.getByRole('button', { name: '设为第1编组', exact: true }).tap();
   await wait(
     'save collapses group popup',
     async () =>
       (await page.locator('.mobile-groups').count()) === 0 && (await control('mobile.observe')).groups[0].count > 0,
   );
-  await page.getByRole('button', { name: '编组', exact: true }).tap();
-  await page.getByRole('button', { name: '收起编组', exact: true }).tap();
   assert.equal(await page.locator('.mobile-groups').count(), 0);
-  await page.getByRole('button', { name: '编组', exact: true }).tap();
   await page.getByRole('button', { name: '第1队', exact: true }).tap();
-  await wait('recall collapses group popup', async () => (await page.locator('.mobile-groups').count()) === 0);
+  await wait(
+    'recall completes and recenters',
+    async () =>
+      (await page.getByRole('button', { name: '第1队', exact: true }).isEnabled()) &&
+      (await control('mobile.observe')).groups[0].selected,
+  );
+  await page.waitForTimeout(400);
   const selection = (await control('mobile.selection')).map((e: any) => e.id);
-  await page.getByRole('button', { name: '编组', exact: true }).tap();
   const start = await offset();
   await drag(-80, 40);
   const end = await offset();
@@ -177,7 +178,10 @@ try {
   ]) {
     await page.setViewportSize(viewport);
     await page.waitForTimeout(400);
-    assert.equal(await page.locator('.mobile-actions button').count(), 3);
+    assert.equal(await page.locator('.mobile-actions button').count(), 12);
+    const screen = (await page.locator('#screen').boundingBox())!;
+    const dock = (await page.locator('.mobile-actions').boundingBox())!;
+    assert(screen.y + screen.height <= dock.y + 1, 'Dock never covers campaign map');
     for (const b of await page.locator('.mobile-actions button').all()) {
       const r = (await b.boundingBox())!;
       assert(r.y + r.height <= viewport.height && r.x + r.width <= viewport.width, 'Controls fit visible screen');
