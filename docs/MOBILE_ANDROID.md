@@ -1,6 +1,6 @@
 # Private Android touch build
 
-This adaptation runs the original RA2 executable inside the project's v86 runtime, in an offline Android WebView. It does not boot Windows, stream a PC, or port the original engine to ARM. The application ID is `local.ra2.mobile.full`; the APK version is `0.8.12` (20), with Android 10 as the minimum OS.
+This adaptation runs the original RA2 executable inside the project's v86 runtime, in an offline Android WebView. It does not boot Windows, stream a PC, or port the original engine to ARM. The application ID is `local.ra2.mobile.full`; the APK version is `0.8.16` (24), with Android 10 as the minimum OS.
 
 ## Resources and build
 
@@ -89,10 +89,16 @@ Panning first moves the visible crop within the original rendered battlefield, t
 
 `mobileCampaignTouchAcceptance.mts` covers the original Allied opening mission, waits for its scripted hero spawn, checks direct group save/recall, one/two-finger panning of the displayed crop, preserved selection and control bounds at three landscape sizes. This does not replace Android hardware testing or verification of all missions.
 
-## 0.8.12 shortcut dock
+## 0.8.16 shortcut dock
 
-The battlefield replaces the native footer with a 52px touch dock plus safe-area space. Cancel, production withdrawal, Deploy, Stop, Pan, Set Group, group slots 1–5 and Actions are available at the first level. Rendering and inverse input mapping use the reduced canvas geometry, including expanded sidebar scrolling. Group selection no longer opens a popup. Production withdrawal arms native right clicks on sidebar icons: the first pauses production and another cancels/refunds according to native rules. Cancel exits withdrawal; Cancel Placement returns a completed building to the sidebar without discarding it. Empty recall shortcuts stay disabled. The assignment picker accepts all five numbers. Actual device ergonomics remain unverified.
+The battlefield replaces the native footer with a 52px touch dock plus safe-area space. Cancel, production withdrawal, Deploy, Stop, Pan, Set Group, group slots 1–5 and Actions are available at the first level. Rendering and inverse input mapping use the reduced canvas geometry, including expanded sidebar scrolling. Group selection no longer opens a popup. Production withdrawal lists active products and submits native suspend/cancel commands for the chosen type. Cancel Placement returns a completed building to the sidebar without discarding it. Empty shortcuts report that the slot is empty. The assignment picker accepts all five numbers. Actual device ergonomics remain unverified.
 
 The native 32-pixel map footer is omitted from the mobile GPU region mapping. The battlefield fills the remaining canvas height, reclaiming the duplicated PC command row. The native right sidebar remains intact. Both forward rendering and inverse touch input share this geometry. Deploy and Stop now have first-level controls, enabled when a selection exists; the original game determines whether selected units can deploy. The dock is 52 CSS pixels including padding, plus the system safe area, maintaining 44-pixel touch targets. Canvas 2D fallback retains the original untransformed surface rather than applying an unmatched hit transform.
 
-Group assignment uses a separate numbered picker after Set Group. The permanent numbered shortcuts always recall with save=false, including while the picker is open. Assignment buttons alone send save=true. The picker temporarily reserves another 52px above the dock, then closes after choosing a number, returning, recalling, or touching the map. A synchronous request lock rejects overlapping group mutations before React renders the busy state.
+Group assignment uses a separate numbered picker after Set Group. The permanent numbered shortcuts always recall with save=false, including while the picker is open. Assignment buttons alone send save=true. The picker temporarily reserves another 52px above the dock, then closes after choosing a number, returning, recalling, or touching the map. A synchronous lock serializes native group commands. While a command finishes, the most recent recall tap is retained and dispatched after completion.
+
+Opening the assignment picker snapshots the selected local unit IDs. Assignment validates the living owned members again and updates their signature-checked native team field. Native recall and saved games read those same fields.
+
+Campaign groups use the native campaign house-control flag and object selection flag validated against the original team routine. This includes player-controlled mission houses beyond the local house. Skirmish ownership and trainer ownership checks keep their existing scope. Production queue controls show Chinese product names, including the Allied power plant, Rocketeer and Prism Tank. Unmapped custom types retain their identifier. The command menu offers large entries for mission briefing/diplomacy and options, with controls derived from the current native dialog layout.
+
+The battle command panel has first-level save, load, delete-save and abort-mission shortcuts. Each opens the original options dialog and activates the matching visible button once. Slot selection and confirmation remain in the original game workflow.

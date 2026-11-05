@@ -19,6 +19,7 @@ export const mobilePanMode = createStore(false);
 export const mobileModifiers = createStore<'none' | 'force' | 'attack-move' | 'add'>('none');
 export const mobileBattle = createStore<{
   ready: boolean;
+  campaign?: boolean;
   selected: number;
   placing: boolean;
   cash: number;

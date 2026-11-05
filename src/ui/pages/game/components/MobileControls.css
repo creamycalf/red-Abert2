@@ -616,3 +616,29 @@ html.mobile-game.mobile-battle-dock.mobile-group-picker-open #stage {
   color: #fff;
   background: #47513a;
 }
+
+.production-list {
+  overflow-x: auto;
+}
+.production-list > span {
+  flex: none;
+  padding: 0 8px;
+  border-right: 1px solid #83947b;
+}
+.production-list button {
+  flex: none;
+  padding: 0 10px;
+}
+.production-list strong {
+  white-space: nowrap;
+}
+.native-menu-list {
+  display: grid;
+  gap: 6px;
+}
+.native-menu-list button,
+.native-menu-list select,
+.native-menu-list input {
+  min-height: 44px;
+  max-width: 100%;
+}

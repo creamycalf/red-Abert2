@@ -44,14 +44,18 @@ export function withRa2MobileControl(
     if (count > 8192 || (count && (data < 0x100000 || data > 0x0ffff000))) throw new Error('原版对象列表无效');
     return Array.from({ length: count }, (_, i) => read(data + i * 4));
   };
-  const owned = (house: number) =>
+  const owned = (house: number, campaignGroups = false) =>
     profile.arrays.flatMap((array) =>
       vector(array.address)
         .filter(
           (object) =>
             object > 0x100000 &&
             object < 0x0ffff000 &&
-            read(object + profile.owner) === house &&
+            (read(object + profile.owner) === house ||
+              (campaignGroups &&
+                read(object + profile.owner) >= 0x100000 &&
+                read(object + profile.owner) < 0x0ffff000 &&
+                !!byte(read(object + profile.owner) + 0x135))) &&
             byte(object + profile.alive) &&
             !byte(object + profile.limbo) &&
             (read(object + profile.health) | 0) > 0,
@@ -73,6 +77,7 @@ export function withRa2MobileControl(
         throw new Error('战场尚未就绪');
       const selected = read(profile.playerControl.selectionCount);
       if (selected > 8192) throw new Error('选择列表无效');
+      const campaignGroups = !!input && read(0xa3d298) === 0;
       const frame = read(profile.frame);
       if (house !== previousHouse || frame < previousFrame) {
         factoryDurations.clear();
@@ -81,10 +86,11 @@ export function withRa2MobileControl(
       previousHouse = house;
       previousFrame = frame;
       if (method === 'mobile.observe') {
-        const groupUnits = input ? owned(house) : [];
+        const groupUnits = input ? owned(house, campaignGroups) : [];
         return {
           ready: true,
-          selected,
+          selected: campaignGroups ? groupUnits.filter((u) => byte(u.object + 0x77)).length : selected,
+          campaign: campaignGroups,
           placing: !!read(profile.sidebar.instance + profile.playerControl.placementObject),
           cash: read(house + profile.cash),
           techLevel: read(house + 0x11c),
@@ -101,7 +107,10 @@ export function withRa2MobileControl(
                   id,
                   count: units.length,
                   selected:
-                    units.length > 0 && units.every(({ object }) => !!byte(object + 0x77)) && units.length === selected,
+                    units.length > 0 &&
+                    units.every(({ object }) => !!byte(object + 0x77)) &&
+                    units.length ===
+                      (campaignGroups ? groupUnits.filter((u) => byte(u.object + 0x77)).length : selected),
                 };
               })
             : [],
@@ -111,8 +120,8 @@ export function withRa2MobileControl(
         const selections = new Set(
           Array.from({ length: selected }, (_, i) => read(read(profile.playerControl.selectionVector) + i * 4)),
         );
-        return owned(house)
-          .filter(({ object }) => selections.has(object))
+        return owned(house, campaignGroups)
+          .filter(({ object }) => selections.has(object) || (campaignGroups && !!byte(object + 0x77)))
           .map(({ object, kind }) => ({
             id: read(object + profile.uniqueId),
             kind,
@@ -133,9 +142,22 @@ export function withRa2MobileControl(
       }
       if (method === 'mobile.group') {
         if (!input) throw new Error('编组控制不可用');
-        const p = params as { id: number; save: boolean };
-        if (p?.save && !selected) throw new Error('先选中部队');
-        input.group(p?.id, !!p?.save);
+        const p = params as { id: number; save: boolean; members?: number[] };
+        if (!Number.isInteger(p.id) || p.id < 1 || p.id > 5) throw new Error('队号无效');
+        if (p.save && p.members) {
+          // Preserve the selection at picker-open time. Recall uses the native team field.
+          const wanted = new Set(p.members);
+          const units = owned(house, campaignGroups).filter((u) => u.kind !== 'building');
+          const members = units.filter((u) => wanted.has(read(u.object + profile.uniqueId)));
+          if (!members.length) throw new Error('请先框选己方存活的部队');
+          for (const u of units) {
+            if (wanted.has(read(u.object + profile.uniqueId))) writeU32(memory, u.object + 0x1ac, p.id - 1);
+            else if (read(u.object + 0x1ac) === p.id - 1) writeU32(memory, u.object + 0x1ac, 0xffffffff);
+          }
+        } else {
+          if (p.save && !selected) throw new Error('先选中部队');
+          input.group(p.id, !!p.save);
+        }
         return { accepted: true };
       }
       if (method === 'mobile.trainer') {

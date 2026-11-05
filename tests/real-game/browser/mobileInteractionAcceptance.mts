@@ -2,7 +2,7 @@ import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
-const output = resolve('../../.toolchain/mobile-0812-acceptance');
+const output = resolve('../../.toolchain/mobile-0816-acceptance');
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ args: ['--js-flags=--max-old-space-size=4096'] });
 const context = await browser.newContext({
@@ -154,6 +154,16 @@ try {
     );
 
     await saveGroup(`第${i + 1}队`);
+    if (i === 1) {
+      await tapUi('第1队');
+      await wait('immediate recall after assigning second tank', async () =>
+        (await control('mobile.selection')).some((e: any) => String(e.id) === tanks[0].id),
+      );
+      await tapUi('第2队');
+      await wait('second tank still has its assignment', async () =>
+        (await control('mobile.selection')).some((e: any) => String(e.id) === tanks[1].id && e.group === 2),
+      );
+    }
     await wait(
       `save group ${i + 1}`,
       async () => (await control('mobile.selection')).some((e: any) => String(e.id) === tank.id && e.group === i + 1),
@@ -162,14 +172,15 @@ try {
   }
   const membershipBefore = (await control('mobile.observe')).groups.map((g: any) => [g.id, g.count]);
   await tapUi('设置编组');
-  const mapWhileSetting = (await page.locator('#screen').boundingBox())!;
-  const picker = (await page.getByRole('group', { name: '设置编组选号' }).boundingBox())!;
-  assert(mapWhileSetting.y + mapWhileSetting.height <= picker.y + 1, 'Assignment picker reserves space');
+  await wait('assignment picker reserves space', async () => {
+    const picker = await page.getByRole('group', { name: '设置编组选号' }).boundingBox();
+    const map = await page.locator('#screen').boundingBox();
+    return !!picker && !!map && map.y + map.height <= picker.y + 1;
+  });
   await page.screenshot({ path: join(output, 'set-group-picker.png') });
   await tapUi('第1队');
-  await wait(
-    'recall while setting finishes',
-    async () => await page.getByRole('button', { name: '第1队', exact: true }).isEnabled(),
+  await wait('recall while setting finishes', async () =>
+    (await control('mobile.selection')).some((e: any) => String(e.id) === tanks[0].id),
   );
   assert.equal(await page.getByRole('group', { name: '设置编组选号' }).count(), 0);
   assert.deepEqual(
@@ -411,9 +422,7 @@ try {
       (await control('observe')).production.some((e: any) => /POWR$/.test(e.type)),
   );
   await tapUi('撤回建造');
-  await point(resolution[0]! - 102, 250);
-  await page.waitForTimeout(600);
-  await point(resolution[0]! - 102, 250);
+  await page.getByRole('button', { name: /^撤回 .*发电厂$/ }).tap();
   await wait(
     'native production cancelled',
     async () => !(await control('observe')).production.some((e: any) => /POWR$/.test(e.type)),

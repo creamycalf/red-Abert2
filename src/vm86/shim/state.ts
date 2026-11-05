@@ -398,9 +398,15 @@ export class ShimState {
             className: this.windowClassNames.get(hwnd) ?? '',
             ...(rectFor ? { rect: rectFor(hwnd) } : {}),
             text,
+            ...(rectFor && this.trackbarStates.has(hwnd) ? { trackbar: { ...this.trackbarStates.get(hwnd)! } } : {}),
             ...(displayText === undefined ? {} : { displayText }),
             items,
-            ...(rectFor ? { selection: this.controlSelections.get(hwnd) ?? -1 } : {}),
+            ...(rectFor
+              ? {
+                  selection: this.controlSelections.get(hwnd) ?? -1,
+                  itemHeight: this.controlItemHeights.get(hwnd) ?? 16,
+                }
+              : {}),
           },
         ];
       });

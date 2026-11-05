@@ -1,3 +1,4 @@
+import { mobileProductName } from '../../../../games/ra2/mobileProductNames';
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../../shared/state/useStore';
 import {
@@ -24,18 +25,58 @@ export function MobileControls() {
   const modifier = useStore(mobileModifiers);
   const zoomSupported = useStore(mobileZoomSupported);
   const zoom = useStore(mobileZoom);
-  const buildCancel = useStore(mobileBuildCancel);
+
   const panMode = useStore(mobilePanMode);
   const [groupBusy, setGroupBusy] = useState(false);
   const [groupPickerOpen, setGroupPickerOpen] = useState(false);
   const groupRequestBusy = useRef(false);
+  const members = useRef<number[]>([]);
+  const [products, setProducts] = useState<string[]>([]);
+  const [orderBusy, setOrderBusy] = useState(false);
+  const queueSnapshot = async () =>
+    (await vm!.gameControl('observe')) as {
+      sessionId: string;
+      frame: number;
+      production: Array<{ type: string; suspended: boolean }>;
+    };
+  const order = async (type: string, action: 'cancel' | 'suspend') => {
+    if (!vm || orderBusy) return;
+    setOrderBusy(true);
+    try {
+      const state = await queueSnapshot();
+      const commandId = crypto.randomUUID();
+      await vm.gameControl('command', {
+        sessionId: state.sessionId,
+        observedFrame: state.frame,
+        commandId,
+        action,
+        type,
+      });
+      for (let i = 0; i < 50; i++) {
+        const next = await queueSnapshot();
+        const item = next.production.find((p) => p.type === type);
+        if (action === 'cancel' ? !item : item?.suspended) {
+          setMessage(action === 'cancel' ? '生产已撤回' : '生产已暂停');
+          setProducts((current) => (current.length ? [] : current));
+          return;
+        }
+        await new Promise((done) => setTimeout(done, 100));
+      }
+      setMessage('未确认生产状态，请重新查看队列');
+    } catch (e) {
+      setMessage(String(e));
+    } finally {
+      setOrderBusy(false);
+    }
+  };
+  const queuedRecall = useRef<number | null>(null);
   useEffect(() => {
     document.documentElement.classList.toggle(
       'mobile-group-picker-open',
-      groupPickerOpen && battle.ready && !battle.placing,
+      (groupPickerOpen || products.length > 0) && battle.ready && !battle.placing,
     );
     return () => document.documentElement.classList.remove('mobile-group-picker-open');
-  }, [groupPickerOpen, battle.ready, battle.placing]);
+  }, [groupPickerOpen, products, battle.ready, battle.placing]);
   const [panel, setPanel] = useState(false);
   useEffect(() => {
     document.documentElement.classList.toggle('mobile-battle-dock', battle.ready);
@@ -46,7 +87,9 @@ export function MobileControls() {
   useEffect(() => {
     const dismiss = (event: PointerEvent) => {
       if ((event.target as Element)?.id === 'screen') {
+        setPanel(false);
         setGroupPickerOpen(false);
+        setProducts((current) => (current.length ? [] : current));
         setActions(false);
       }
     };
@@ -96,6 +139,7 @@ export function MobileControls() {
   const groupGeneration = useRef(0);
   useEffect(() => {
     groupGeneration.current++;
+    queuedRecall.current = null;
     setGroupBusy(false);
     groupRequestBusy.current = false;
     setGroupPickerOpen(false);
@@ -192,10 +236,11 @@ export function MobileControls() {
     };
   });
   useEffect(() => {
-    if (battle.placing || !battle.ready || !battle.selected) {
+    if (battle.placing || !battle.ready) {
+      setProducts((current) => (current.length ? [] : current));
       setGroupPickerOpen(false);
     }
-  }, [battle.placing, battle.ready, battle.selected]);
+  }, [battle.placing, battle.ready]);
   const key = (code: string, modifier?: string) => {
     setActions(false);
     setGroupPickerOpen(false);
@@ -207,6 +252,7 @@ export function MobileControls() {
   };
   const cancel = () => {
     setActions(false);
+    setProducts((current) => (current.length ? [] : current));
     setGroupPickerOpen(false);
     mobileBuildCancel.set(false);
     mobileModifiers.set('none');
@@ -219,13 +265,16 @@ export function MobileControls() {
     vm.postMessage(0x205, 0, point);
   };
   const assign = async (id: number, save: boolean) => {
-    if (!vm || groupRequestBusy.current) return;
-    if (save && !battle.selected) {
-      setMessage('先在地图直接拖框选兵');
+    if (!vm || !mobileBattle.getSnapshot().ready || mobileBattle.getSnapshot().placing) return;
+    if (groupRequestBusy.current) {
+      if (!save) {
+        queuedRecall.current = id;
+        setMessage(`即将选择第 ${id} 队`);
+      }
       return;
     }
-    if (!save && !battle.groups?.some((g) => g.id === id && g.count)) {
-      setMessage(`第 ${id} 队为空，选兵后点设置编组`);
+    if (save && !members.current.length) {
+      setMessage('先在地图直接拖框选兵');
       return;
     }
     const generation = groupGeneration.current;
@@ -233,7 +282,16 @@ export function MobileControls() {
     setGroupBusy(true);
     setGroupPickerOpen(false);
     try {
-      await vm.gameControl('mobile.group', { id, save });
+      if (!save) {
+        setMessage(`正在选择第 ${id} 队`);
+        const current = (await vm.gameControl('mobile.observe')) as typeof battle;
+        if (generation !== groupGeneration.current) return;
+        if (!current.groups?.some((g) => g.id === id && g.count)) {
+          setMessage(`第 ${id} 队为空，请先设置编组`);
+          return;
+        }
+      }
+      await vm.gameControl('mobile.group', { id, save, members: save ? members.current : undefined });
       const deadline = performance.now() + 3000;
       while (performance.now() < deadline) {
         const next = (await vm.gameControl('mobile.observe')) as typeof battle;
@@ -270,6 +328,9 @@ export function MobileControls() {
       if (generation === groupGeneration.current) {
         groupRequestBusy.current = false;
         setGroupBusy(false);
+        const nextId = queuedRecall.current;
+        queuedRecall.current = null;
+        if (nextId !== null) void assign(nextId, false);
       }
     }
   };
@@ -292,12 +353,21 @@ export function MobileControls() {
           <button onClick={cancel}>{battle.placing ? '取消放置' : '取消'}</button>
           <button
             aria-label="撤回建造"
-            aria-pressed={buildCancel}
+            aria-expanded={products.length > 0}
             disabled={battle.placing}
-            onClick={() => {
-              mobileBuildCancel.set(!buildCancel);
+            onClick={async () => {
               setGroupPickerOpen(false);
-              setMessage(buildCancel ? '已退出撤回模式' : '点右侧图标暂停，再点同一图标撤回；点底栏取消退出');
+              if (products.length) {
+                setProducts((current) => (current.length ? [] : current));
+                return;
+              }
+              try {
+                const state = await queueSnapshot();
+                setProducts([...new Set(state.production.map((p) => p.type))]);
+                if (!state.production.length) setMessage('当前没有生产项目');
+              } catch (e) {
+                setMessage(String(e));
+              }
             }}
           >
             暂停/撤回
@@ -315,10 +385,24 @@ export function MobileControls() {
             aria-expanded={groupPickerOpen}
             aria-controls="mobile-group-picker"
             disabled={!battle.selected || battle.placing || groupBusy}
-            onClick={() => {
-              setGroupPickerOpen(!groupPickerOpen);
+            onClick={async () => {
+              setProducts((current) => (current.length ? [] : current));
               setActions(false);
-              mobileBuildCancel.set(false);
+              if (groupPickerOpen) {
+                setGroupPickerOpen(false);
+                return;
+              }
+              try {
+                const selected = (await vm.gameControl('mobile.selection')) as Array<{ id: number; kind: string }>;
+                members.current = selected.filter((u) => u.kind !== 'building').map((u) => u.id);
+                if (!members.current.length) {
+                  setMessage('请先框选己方存活的部队');
+                  return;
+                }
+                setGroupPickerOpen(true);
+              } catch (e) {
+                setMessage(String(e));
+              }
             }}
           >
             设置编组
@@ -328,7 +412,7 @@ export function MobileControls() {
               key={id}
               aria-label={`第${id}队`}
               aria-pressed={!!battle.groups?.find((g) => g.id === id)?.selected}
-              disabled={groupBusy || battle.placing || !battle.groups?.find((g) => g.id === id)?.count}
+              disabled={battle.placing}
               onClick={() => {
                 mobileBuildCancel.set(false);
                 void assign(id, false);
@@ -349,16 +433,31 @@ export function MobileControls() {
           </button>
         </nav>
       )}
+      {battle.ready && !battle.placing && products.length > 0 && (
+        <div className="mobile-group-picker production-list" aria-label="生产队列">
+          {products.map((type) => (
+            <span key={type} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <strong>{mobileProductName(type)}</strong>
+              <button disabled={orderBusy} onClick={() => void order(type, 'suspend')}>
+                暂停
+              </button>
+              <button
+                aria-label={`撤回 ${mobileProductName(type)}`}
+                disabled={orderBusy}
+                onClick={() => void order(type, 'cancel')}
+              >
+                撤回
+              </button>
+            </span>
+          ))}
+          <button onClick={() => setProducts([])}>返回</button>
+        </div>
+      )}
       {battle.ready && !battle.placing && groupPickerOpen && (
         <div id="mobile-group-picker" className="mobile-group-picker" role="group" aria-label="设置编组选号">
           <span>将所选部队设为</span>
           {[1, 2, 3, 4, 5].map((id) => (
-            <button
-              key={id}
-              aria-label={`设为第${id}编组`}
-              disabled={groupBusy || !battle.selected}
-              onClick={() => void assign(id, true)}
-            >
+            <button key={id} aria-label={`设为第${id}编组`} disabled={groupBusy} onClick={() => void assign(id, true)}>
               {id}编组
             </button>
           ))}

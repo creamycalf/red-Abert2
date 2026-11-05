@@ -2,7 +2,7 @@ import { chromium } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
-const output = resolve('../../.toolchain/mobile-0812-acceptance');
+const output = resolve('../../.toolchain/mobile-0816-acceptance');
 await mkdir(output, { recursive: true });
 const browser = await chromium.launch({ args: ['--js-flags=--max-old-space-size=4096'] });
 const context = await browser.newContext({
@@ -134,7 +134,32 @@ try {
   );
   const hero = before.entities.find((e: any) => e.type === 'TANY');
   assert(hero, 'Campaign player unit exists');
-  await point(hero.screen.x, hero.screen.y);
+  const bounds = await page.evaluate(async ({ x, y }) => {
+    const path = '/src/ui/pages/game/mobileViewport.ts';
+    const { mobilePoint } = await import(path);
+    const canvas = document.querySelector('#screen')!,
+      rect = canvas.getBoundingClientRect();
+    const [w, h] = canvas.getAttribute('data-vm-resolution')!.split('x').map(Number);
+    const p = mobilePoint(x, y, w!, h!, rect.width / rect.height, true);
+    const sx = rect.x + (p.x * rect.width) / w!,
+      sy = rect.y + (p.y * rect.height) / h!;
+    return [-1, 1].map((d) => ({
+      x: Math.max(rect.x + 3, Math.min(rect.right - 3, sx + d * 55)),
+      y: Math.max(rect.y + 3, Math.min(rect.bottom - 3, sy + d * 45)),
+      id: 1,
+    }));
+  }, hero.screen);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [bounds[0]!] });
+  for (let i = 1; i <= 12; i++) {
+    const a = bounds[0]!,
+      b = bounds[1]!;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ id: 1, x: a.x + ((b.x - a.x) * i) / 12, y: a.y + ((b.y - a.y) * i) / 12 }],
+    });
+    await page.waitForTimeout(30);
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await wait('select campaign unit', async () =>
     (await control('mobile.selection')).some((e: any) => String(e.id) === hero.id),
   );
@@ -188,6 +213,23 @@ try {
     }
   }
   await page.screenshot({ path: join(output, 'compact-controls.png') });
+  await page.getByRole('button', { name: '手机菜单' }).tap();
+  await page.getByRole('button', { name: '任务简报', exact: true }).tap();
+  await wait('native mission dialog opens', async () => !!(await control('ui.status')).page);
+  await page.locator('.native-menu-list').getByRole('button', { name: '返回战场' }).waitFor();
+  console.log('MISSION-DIALOG', JSON.stringify(await control('ui.layout')));
+  await page.screenshot({ path: join(output, 'command-briefing.png') });
+  const touchPanel = page.locator('.native-menu-list');
+  await touchPanel.getByRole('button', { name: '返回战场', exact: true }).tap();
+  await touchPanel.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '手机菜单', exact: true }).tap();
+  await page.getByRole('button', { name: '放弃任务', exact: true }).tap();
+  await wait('campaign abort confirmation', async () =>
+    (await control('ui.layout')).some((c: any) => c.text === 'GUI:AskAbortMission' || c.text === 'GUI:RestartMission'),
+  );
+  console.log('CAMPAIGN-ABORT', JSON.stringify(await control('ui.layout')));
+  await touchPanel.getByRole('button', { name: '继续作战', exact: true }).tap();
+  await touchPanel.waitFor({ state: 'hidden' });
   assert.equal(errors.length, 0, errors.join('\n'));
   console.log(
     'PASS original campaign selection, save/recall and close groups, canvas dismissal, one/two-finger crop panning, compact controls at three phone sizes',

@@ -9,6 +9,8 @@ export const mobileInputEvidence = [
   { address: 0x6f5d90, bytes: hex('53 8b 1d 30 0c a4 00 55 57 33 ff 8b e9') },
   { address: 0x6f5f00, bytes: hex('83 ec 10 56 8b f1 57 6a 00 b9 e0 24 83 00') },
   { address: 0x6f60d0, bytes: hex('51 55 8b e9 57 6a 00 b9 e0 24 83 00') },
+  { address: 0x6f5dc4, bytes: hex('8a 81 35 01 00 00') },
+  { address: 0x6f5dec, bytes: hex('8a 4e 77') },
   { address: 0x6f5dd5, bytes: hex('8b 8e ac 01 00 00 8d 45 ff 3b c8') },
   { address: 0x6a8c80, bytes: hex('a1 d8 25 83 00 8b 0d d0 25 83 00 03 c0') },
   { address: 0x6a9170, bytes: hex('83 ec 18 56 8b f1 57 c7 44 24 1c 00 00 00 00') },

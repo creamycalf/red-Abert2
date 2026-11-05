@@ -1,3 +1,4 @@
+import { MobileNativeMenus, type NativeEntry } from './MobileNativeMenus';
 import { MobileCampaignGuide } from './MobileCampaignGuide';
 import { useEffect, useState } from 'react';
 import type { VmShell } from '../../../../adapter/vmShell';
@@ -14,6 +15,7 @@ export function MobileMenuPanel({
   onClose(): void;
   onKey(code: string): void;
 }) {
+  const [nativeEntry, setNativeEntry] = useState<NativeEntry | null>(null);
   const [tab, setTab] = useState('作战');
   const [money, setMoney] = useState(100000);
   const [message, setMessage] = useState('');
@@ -55,14 +57,32 @@ export function MobileMenuPanel({
         </header>
         <nav className="mobile-panel-tabs" aria-label="菜单分类">
           {['作战', '攻略', '修改器', '设置'].map((name) => (
-            <button key={name} aria-pressed={tab === name} onClick={() => setTab(name)}>
+            <button
+              key={name}
+              disabled={!!nativeEntry && name !== '作战'}
+              aria-pressed={tab === name}
+              onClick={() => setTab(name)}
+            >
               {name}
             </button>
           ))}
         </nav>
         <div className="mobile-panel-content">
-          {tab === '作战' && (
+          {tab === '作战' && nativeEntry && <MobileNativeMenus vm={vm} entry={nativeEntry} onBack={onClose} />}
+          {tab === '作战' && !nativeEntry && (
             <>
+              {battle.ready && (
+                <div className="mobile-command-grid">
+                  <button onClick={() => setNativeEntry('mission')}>
+                    {battle.campaign ? '任务简报' : '外交 / 战况'}
+                  </button>
+                  <button onClick={() => setNativeEntry('options')}>游戏选项</button>
+                  <button onClick={() => setNativeEntry('SaveGame')}>保存进度</button>
+                  <button onClick={() => setNativeEntry('LoadGame')}>读取存档</button>
+                  <button onClick={() => setNativeEntry('DeleteGame')}>删除存档</button>
+                  <button onClick={() => setNativeEntry('AbortMission')}>放弃任务</button>
+                </div>
+              )}
               <button className="mobile-menu-wide" onClick={() => order('Escape')}>
                 原版菜单 / 保存 / 读取
               </button>
@@ -231,7 +251,7 @@ export function MobileMenuPanel({
             {message}
           </p>
           <button className="mobile-return" onClick={onClose}>
-            返回游戏
+            {nativeEntry ? '查看原版界面' : '返回游戏'}
           </button>
         </footer>
       </section>
